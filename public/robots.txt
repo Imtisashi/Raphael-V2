@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://www.google.com/search?q=https://raphael-v1-gamma.vercel.app//sitemap.xml
