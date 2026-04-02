@@ -4,7 +4,7 @@ import Button from '../ui/Button';
 import { supabase } from '../../lib/supabaseClient';
 
 export default function LoginView({ onLogin, showToast }) {
-  const [mode, setMode] = useState('login'); 
+  const [mode, setMode] = useState('login'); // login, register, forgot
   const [step, setStep] = useState(1); 
   const [isVisible, setIsVisible] = useState(false); 
   
@@ -17,9 +17,14 @@ export default function LoginView({ onLogin, showToast }) {
   const [role, setRole] = useState('patient');
   const [specialty, setSpecialty] = useState('General Physician');
   const [price, setPrice] = useState('500'); 
-  const [doctorUpi, setDoctorUpi] = useState(''); // NEW: Doctor's personal UPI
+  const [doctorUpi, setDoctorUpi] = useState(''); 
   const [avatarFile, setAvatarFile] = useState(null); 
   
+  // Forgot Password State
+  const [resetEmail, setResetEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+
+  // Verification State
   const [otp, setOtp] = useState('');
   const [generatedOtp, setGeneratedOtp] = useState(null);
   const [isPhoneVerified, setIsPhoneVerified] = useState(false);
@@ -46,17 +51,28 @@ export default function LoginView({ onLogin, showToast }) {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
+  // --- NAVIGATION HELPERS ---
   const goToRegister = () => {
     window.history.pushState({ mode: 'register', step: 1 }, '');
     setMode('register');
     setStep(1);
+    setError('');
+  };
+
+  const goToForgot = () => {
+    window.history.pushState({ mode: 'forgot', step: 1 }, '');
+    setMode('forgot');
+    setStep(1);
+    setError('');
   };
 
   const goToLogin = () => {
-    if (mode === 'register') window.history.back();
+    if (mode === 'register' || mode === 'forgot') window.history.back();
     else setMode('login');
+    setError('');
   };
 
+  // --- REGISTRATION OTP LOGIC ---
   const handleSendOtp = () => {
     if (phone.length < 10) {
       setError("Please enter a valid 10-digit phone number.");
@@ -75,6 +91,7 @@ export default function LoginView({ onLogin, showToast }) {
       setIsPhoneVerified(true);
       if(showToast) showToast("Phone number verified successfully!");
       window.history.back(); 
+      setOtp('');
     } else {
       setError("Invalid OTP. Please try again.");
     }
@@ -82,6 +99,66 @@ export default function LoginView({ onLogin, showToast }) {
 
   const handleBackFromVerify = () => window.history.back();
 
+  // --- FORGOT PASSWORD LOGIC ---
+  const handleSendResetOtp = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      const { data, error } = await supabase.from('users').select('phone').eq('email', resetEmail).single();
+      if (error || !data) throw new Error("No account found with this email.");
+      
+      const mockOtp = Math.floor(1000 + Math.random() * 9000).toString();
+      setGeneratedOtp(mockOtp);
+      if(showToast) showToast(`Use OTP: ${mockOtp} to reset your password.`, "success"); 
+      
+      window.history.pushState({ mode: 'forgot', step: 2 }, '');
+      setStep(2);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyResetOtp = (e) => {
+    e.preventDefault();
+    if (otp === generatedOtp) {
+      window.history.pushState({ mode: 'forgot', step: 3 }, '');
+      setStep(3);
+      setOtp('');
+    } else {
+      setError("Invalid OTP. Please try again.");
+    }
+  };
+
+  const handleResetPasswordSubmit = async (e) => {
+    e.preventDefault();
+    if(newPassword.length < 4) {
+        setError("Password must be at least 4 characters long.");
+        return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const { error } = await supabase.from('users').update({ password: newPassword }).eq('email', resetEmail);
+      if (error) throw error;
+      
+      if(showToast) showToast("Password reset successfully! You can now login.");
+      
+      // Navigate back to login
+      setMode('login');
+      setStep(1);
+      setResetEmail('');
+      setNewPassword('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- LOGIN & REGISTER LOGIC ---
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -136,7 +213,7 @@ export default function LoginView({ onLogin, showToast }) {
              name, specialty, rating: 5.0, reviews: 0, image: avatarUrl, 
              location: 'Online', experience: '1 Year', bio: 'New specialist at Rapha\'l.', 
              price: `₹${price}`, slots: ['09:00 AM', '10:00 AM', '02:00 PM'],
-             upi_id: doctorUpi // NEW: Save to database
+             upi_id: doctorUpi 
          }]).select().single();
          
          if (docError) throw new Error("Failed to create doctor profile.");
@@ -167,18 +244,29 @@ export default function LoginView({ onLogin, showToast }) {
           <p className="text-slate-400 text-xs font-bold tracking-[0.25em] uppercase">Nagaland's Healthcare Portal</p>
         </div>
 
+        {/* LOGIN FORM */}
         {mode === 'login' && (
           <form onSubmit={handleLoginSubmit} className={`space-y-6 transition-all duration-500 ${isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-4'}`}>
             <div className="group relative">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Mail className="text-slate-500 group-focus-within:text-teal-500" size={20} /></div>
                 <input type="email" placeholder="Email Address" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-900/60 border border-slate-700/50 rounded-2xl pl-12 pr-4 py-4 text-white focus:bg-slate-900/80 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all duration-300 focus:scale-[1.02] placeholder:text-slate-500 shadow-sm" required />
             </div>
-            <div className="group relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Lock className="text-slate-500 group-focus-within:text-teal-500" size={20} /></div>
-                <input type={showPassword ? "text" : "password"} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-900/60 border border-slate-700/50 rounded-2xl pl-12 pr-12 py-4 text-white focus:bg-slate-900/80 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all duration-300 focus:scale-[1.02] placeholder:text-slate-500 shadow-sm" required />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-teal-400"><Eye size={20} /></button>
+            
+            <div className="space-y-2">
+                <div className="group relative">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Lock className="text-slate-500 group-focus-within:text-teal-500" size={20} /></div>
+                    <input type={showPassword ? "text" : "password"} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-900/60 border border-slate-700/50 rounded-2xl pl-12 pr-12 py-4 text-white focus:bg-slate-900/80 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all duration-300 focus:scale-[1.02] placeholder:text-slate-500 shadow-sm" required />
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-teal-400"><Eye size={20} /></button>
+                </div>
+                <div className="flex justify-end">
+                    <button type="button" onClick={goToForgot} className="text-xs font-medium text-slate-400 hover:text-teal-400 transition-colors">
+                        Forgot Password?
+                    </button>
+                </div>
             </div>
+
             {error && <div className="bg-red-500/10 border border-red-500/20 text-red-200 text-sm text-center py-3 rounded-xl">{error}</div>}
+            
             <Button className="w-full py-4 text-lg font-bold shadow-xl shadow-teal-500/30 hover:scale-[1.02] transition-all bg-gradient-to-r from-teal-500 to-cyan-600 border-none rounded-2xl" disabled={loading}>
                 {loading ? <span className="flex items-center gap-2 justify-center"><Loader2 className="animate-spin" /> Verifying...</span> : "Secure Login"}
             </Button>
@@ -188,6 +276,60 @@ export default function LoginView({ onLogin, showToast }) {
           </form>
         )}
 
+        {/* FORGOT PASSWORD FLOW */}
+        {mode === 'forgot' && (
+           <div className={`space-y-5 transition-all duration-700 ${isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'}`}>
+            <div className="text-center mb-6">
+                <h2 className="text-2xl font-bold text-white mb-2">Reset Password</h2>
+                <p className="text-slate-400 text-sm">
+                    {step === 1 && "Enter your registered email address."}
+                    {step === 2 && "Enter the 4-digit code sent to your phone."}
+                    {step === 3 && "Create a new secure password."}
+                </p>
+            </div>
+
+            {step === 1 && (
+                <form onSubmit={handleSendResetOtp} className="space-y-4">
+                    <div className="group relative">
+                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Mail className="text-slate-500 group-focus-within:text-teal-500" size={20} /></div>
+                        <input type="email" placeholder="Email Address" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} className="w-full bg-slate-900/60 border border-slate-700/50 rounded-xl pl-12 pr-4 py-3.5 text-white focus:ring-2 focus:ring-teal-500 outline-none" required />
+                    </div>
+                    {error && <p className="text-red-400 text-sm text-center bg-red-500/10 py-2 rounded-lg border border-red-500/20">{error}</p>}
+                    <Button className="w-full py-4 text-lg font-bold bg-gradient-to-r from-teal-500 to-cyan-600 border-none rounded-xl shadow-lg" disabled={loading}>
+                        {loading ? <Loader2 className="animate-spin mx-auto" /> : "Send Reset Code"}
+                    </Button>
+                </form>
+            )}
+
+            {step === 2 && (
+                <form onSubmit={handleVerifyResetOtp} className="space-y-4 animate-in zoom-in">
+                    <input type="text" placeholder="0000" value={otp} onChange={(e) => setOtp(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-4 text-center text-4xl tracking-[0.5em] text-white focus:border-teal-500 outline-none font-mono" maxLength={4} required />
+                    {error && <p className="text-red-400 text-sm text-center bg-red-500/10 py-2 rounded-lg border border-red-500/20">{error}</p>}
+                    <Button className="w-full py-4 text-lg font-bold bg-gradient-to-r from-teal-500 to-cyan-600 border-none rounded-xl shadow-lg">Verify Code</Button>
+                </form>
+            )}
+
+            {step === 3 && (
+                <form onSubmit={handleResetPasswordSubmit} className="space-y-4 animate-in fade-in slide-in-from-right-4">
+                    <div className="group relative">
+                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Lock className="text-slate-500 group-focus-within:text-teal-500" size={20} /></div>
+                        <input type={showPassword ? "text" : "password"} placeholder="Enter New Password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full bg-slate-900/60 border border-slate-700/50 rounded-xl pl-12 pr-12 py-3.5 text-white focus:ring-2 focus:ring-teal-500 outline-none" required />
+                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-teal-400"><Eye size={20} /></button>
+                    </div>
+                    {error && <p className="text-red-400 text-sm text-center bg-red-500/10 py-2 rounded-lg border border-red-500/20">{error}</p>}
+                    <Button className="w-full py-4 text-lg font-bold bg-gradient-to-r from-teal-500 to-cyan-600 border-none rounded-xl shadow-lg" disabled={loading}>
+                        {loading ? <Loader2 className="animate-spin mx-auto" /> : "Update Password"}
+                    </Button>
+                </form>
+            )}
+
+            <button type="button" onClick={goToLogin} className="w-full text-center mt-4 text-slate-400 text-sm hover:text-white flex justify-center items-center gap-1 group">
+                <ArrowRight size={14} className="rotate-180 group-hover:-translate-x-1 transition-transform" /> Back to Login
+            </button>
+           </div>
+        )}
+
+        {/* REGISTRATION FORM */}
         {mode === 'register' && (
            <div className={`space-y-5 transition-all duration-700 ${isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'}`}>
             {step === 1 && (
@@ -202,7 +344,7 @@ export default function LoginView({ onLogin, showToast }) {
                 
                 <div className="relative group">
                   <input type="text" placeholder="Phone Number" value={phone} onChange={(e) => setPhone(e.target.value)} disabled={isPhoneVerified} className={`w-full bg-slate-900/60 border ${isPhoneVerified ? 'border-green-500 text-green-600' : 'border-slate-700/50 text-white'} rounded-xl px-4 py-3.5 outline-none focus:ring-2 focus:ring-teal-500 transition-all placeholder:text-slate-500`} />
-                  {isPhoneVerified ? <CheckCircle size={20} className="absolute right-4 top-3.5 text-green-500" /> : <button onClick={handleSendOtp} className="absolute right-2 top-2 bg-slate-800 text-xs px-4 py-1.5 rounded-lg text-white hover:bg-teal-600">Verify</button>}
+                  {isPhoneVerified ? <CheckCircle size={20} className="absolute right-4 top-3.5 text-green-500" /> : <button onClick={handleSendOtp} className="absolute right-2 top-2 bg-slate-800 text-xs px-4 py-1.5 rounded-lg text-white hover:bg-teal-600 font-medium">Verify</button>}
                 </div>
 
                 {role === 'doctor' && (
@@ -225,7 +367,6 @@ export default function LoginView({ onLogin, showToast }) {
                             </label>
                         </div>
                     </div>
-                    {/* NEW: Doctor UPI Input */}
                     <div className="relative group">
                         <CreditCard size={16} className="absolute left-3 top-3.5 text-slate-400 z-10" />
                         <input type="text" placeholder="Your UPI ID (For Payouts)" value={doctorUpi} onChange={(e) => setDoctorUpi(e.target.value)} className="w-full bg-slate-900/60 border border-slate-700/50 rounded-xl pl-9 pr-4 py-3.5 text-white outline-none focus:ring-2 focus:ring-teal-500 transition-all placeholder:text-slate-500 text-sm" />
@@ -241,7 +382,7 @@ export default function LoginView({ onLogin, showToast }) {
                 <Button onClick={handleRegisterSubmit} className="w-full py-4 text-lg font-bold shadow-xl hover:scale-[1.02] bg-gradient-to-r from-teal-500 to-cyan-600 border-none mt-2" disabled={loading}>
                    {loading ? <Loader2 className="animate-spin mx-auto" /> : "Complete Registration"}
                 </Button>
-                <button type="button" onClick={goToLogin} className="w-full text-center mt-4 text-slate-400 text-sm hover:text-white flex justify-center gap-1"><ArrowRight size={14} className="rotate-180" /> Back to Login</button>
+                <button type="button" onClick={goToLogin} className="w-full text-center mt-4 text-slate-400 text-sm hover:text-white flex justify-center items-center gap-1 group"><ArrowRight size={14} className="rotate-180 group-hover:-translate-x-1 transition-transform" /> Back to Login</button>
               </>
             )}
 
@@ -250,7 +391,7 @@ export default function LoginView({ onLogin, showToast }) {
                 <div className="w-20 h-20 bg-slate-800/80 rounded-full flex items-center justify-center mx-auto mb-6 border border-slate-600"><Phone className="text-teal-400 animate-pulse" size={32} /></div>
                 <h2 className="text-2xl font-bold text-white mb-2">Verify Number</h2>
                 <p className="text-slate-400 text-sm mb-8">Enter code sent to <span className="text-teal-400">{phone}</span></p>
-                <input type="text" placeholder="0000" value={otp} onChange={(e) => setOtp(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-2xl px-4 py-5 text-center text-4xl tracking-[0.5em] text-white focus:border-teal-500 outline-none mb-8 font-mono" maxLength={4} />
+                <input type="text" placeholder="0000" value={otp} onChange={(e) => setOtp(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-2xl px-4 py-5 text-center text-4xl tracking-[0.5em] text-white focus:border-teal-500 outline-none mb-8 font-mono shadow-inner" maxLength={4} />
                 {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
                 <Button onClick={handleVerifyOtp} className="w-full py-4 text-lg font-bold bg-gradient-to-r from-teal-500 to-cyan-600 border-none">Verify & Continue</Button>
                 <button onClick={handleBackFromVerify} className="mt-6 text-sm text-slate-500 hover:text-white underline">Change Phone Number</button>
@@ -260,6 +401,7 @@ export default function LoginView({ onLogin, showToast }) {
         )}
       </div>
 
+      {/* SEO Content Footer */}
       <div className="max-w-4xl mx-auto mt-8 text-center space-y-8 z-10 relative pb-10 hidden md:block">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-slate-400">
             <div className="bg-white/5 p-6 rounded-2xl border border-white/5 backdrop-blur-sm"><MapPin className="mx-auto mb-3 text-teal-400" size={28} /><h3 className="text-white font-bold mb-2">Nagaland Wide</h3><p className="text-sm">Kohima, Dimapur, Mokokchung, and beyond.</p></div>
