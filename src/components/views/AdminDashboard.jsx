@@ -52,7 +52,7 @@ const DoctorPayoutModal = ({ doctor, amount, onClose, onConfirm }) => {
   );
 };
 
-export default function AdminDashboard({ logout, doctors, onDelete, onPayout }) {
+export default function AdminDashboard({ logout, doctors, onDelete }) {
   const [appointments, setAppointments] = useState([]);
   const [stats, setStats] = useState({ totalRevenue: 0, pendingPayouts: 0 });
   const [loading, setLoading] = useState(true);
@@ -133,11 +133,22 @@ export default function AdminDashboard({ logout, doctors, onDelete, onPayout }) 
     }
   };
   
-  // Triggers the actual DB update after the admin confirms they paid the QR code
+  // Triggers the actual DB update directly after the admin confirms they paid the QR code
   const handleConfirmSettle = async (docId) => {
-      await onPayout(docId);
-      setPayoutData(null); // Close modal
-      setTimeout(refreshData, 500); 
+      try {
+          const { error } = await supabase.from('appointments')
+            .update({ is_paid_out: true })
+            .eq('doctor_id', docId)
+            .eq('status', 'Confirmed');
+            
+          if (error) throw error;
+          
+          setPayoutData(null); // Close modal
+          refreshData(); // Refresh data instantly
+          
+      } catch (err) {
+          alert("Failed to settle dues: " + err.message);
+      }
   };
 
   // Restored PDF Generation logic
