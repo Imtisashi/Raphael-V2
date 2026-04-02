@@ -16,7 +16,7 @@ export default function LoginView({ onLogin, showToast }) {
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState('patient');
   const [specialty, setSpecialty] = useState('General Physician');
-  const [price, setPrice] = useState('500'); 
+  const [price, setPrice] = useState(''); // Changed from '500' to empty so doctors must decide
   const [doctorUpi, setDoctorUpi] = useState(''); 
   const [avatarFile, setAvatarFile] = useState(null); 
   
@@ -183,9 +183,15 @@ export default function LoginView({ onLogin, showToast }) {
       setError("You must verify your phone number first.");
       return;
     }
-    if (role === 'doctor' && !doctorUpi) {
-        setError("Doctors must provide a UPI ID for payouts.");
-        return;
+    if (role === 'doctor') {
+        if (!price || Number(price) <= 0) {
+            setError("Doctors must set a valid consultation fee.");
+            return;
+        }
+        if (!doctorUpi) {
+            setError("Doctors must provide a UPI ID for payouts.");
+            return;
+        }
     }
 
     setLoading(true);
@@ -358,7 +364,7 @@ export default function LoginView({ onLogin, showToast }) {
                     <div className="flex gap-4">
                         <div className="flex-1 flex items-center relative group">
                             <IndianRupee size={16} className="absolute left-3 text-slate-400 z-10" />
-                            <input type="number" placeholder="Fee" value={price} onChange={(e) => setPrice(e.target.value)} className="w-full bg-slate-900/60 border border-slate-700/50 rounded-xl pl-9 pr-4 py-3.5 text-white outline-none focus:ring-2 focus:ring-teal-500 transition-all" />
+                            <input type="number" placeholder="Consultation Fee (₹)" value={price} onChange={(e) => setPrice(e.target.value)} className="w-full bg-slate-900/60 border border-slate-700/50 rounded-xl pl-9 pr-4 py-3.5 text-white outline-none focus:ring-2 focus:ring-teal-500 transition-all placeholder:text-slate-500" />
                         </div>
                         <div className="flex-1 relative">
                             <input type="file" id="avatar-upload" accept="image/*" onChange={(e) => setAvatarFile(e.target.files[0])} className="hidden" />
