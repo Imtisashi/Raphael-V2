@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Activity, Shield, Trash2, CheckCircle, FileText, Download, IndianRupee, AlertTriangle, LogOut, Clock, XCircle, Loader2, CheckSquare, CreditCard } from 'lucide-react';
+import { Users, Activity, Shield, Trash2, CheckCircle, FileText, Download, IndianRupee, AlertTriangle, LogOut, Clock, XCircle, Loader2, CheckSquare, CreditCard, Mail } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { generateAdminReport } from '../../utils/pdfGenerator';
 import Button from '../ui/Button';
@@ -57,8 +57,10 @@ export default function AdminDashboard({ logout, doctors, onDelete, onPayout }) 
   const [stats, setStats] = useState({ totalRevenue: 0, pendingPayouts: 0 });
   const [loading, setLoading] = useState(true);
   
-  // NEW: State for the payout modal
+  // State for the payout modal
   const [payoutData, setPayoutData] = useState(null); 
+  // State for mapping doctors to their emails
+  const [doctorEmails, setDoctorEmails] = useState({});
 
   const refreshData = async () => {
     const { data: appts } = await supabase.from('appointments').select('*').order('id', { ascending: false });
@@ -81,16 +83,29 @@ export default function AdminDashboard({ logout, doctors, onDelete, onPayout }) 
       let mounted = true;
       const initFetch = async () => {
         const { data: appts } = await supabase.from('appointments').select('*').order('id', { ascending: false });
-        if (mounted && appts) {
-            setAppointments(appts);
-            const validAppts = appts.filter(a => a.status === 'Confirmed');
-            const platformRevenue = validAppts.length * 50;
-            const unpaidAppts = validAppts.filter(a => !a.is_paid_out);
-            const payouts = unpaidAppts.reduce((sum, a) => {
-                const amt = parseInt(a.amount?.replace(/[^0-9]/g, '')) || 0;
-                return sum + (amt - 50);
-            }, 0);
-            setStats({ totalRevenue: platformRevenue, pendingPayouts: payouts });
+        
+        // Fetch doctor emails from the users table
+        const { data: usersData } = await supabase.from('users').select('name, email').eq('role', 'doctor');
+        const emailsMap = {};
+        if (usersData) {
+            usersData.forEach(u => {
+                emailsMap[u.name] = u.email;
+            });
+        }
+
+        if (mounted) {
+            setDoctorEmails(emailsMap);
+            if (appts) {
+                setAppointments(appts);
+                const validAppts = appts.filter(a => a.status === 'Confirmed');
+                const platformRevenue = validAppts.length * 50;
+                const unpaidAppts = validAppts.filter(a => !a.is_paid_out);
+                const payouts = unpaidAppts.reduce((sum, a) => {
+                    const amt = parseInt(a.amount?.replace(/[^0-9]/g, '')) || 0;
+                    return sum + (amt - 50);
+                }, 0);
+                setStats({ totalRevenue: platformRevenue, pendingPayouts: payouts });
+            }
             setLoading(false);
         }
       };
@@ -214,12 +229,17 @@ export default function AdminDashboard({ logout, doctors, onDelete, onPayout }) 
                    return sum + (amt - 50);
                }, 0);
 
+               const docEmail = doctorEmails[doc.name] || 'No email registered';
+
                return (
                 <div key={doc.id} className="flex items-center justify-between p-4 bg-slate-900 border border-slate-800 rounded-2xl hover:border-slate-700 transition-colors group shadow-lg">
                     <div className="flex items-center gap-3">
                         <img src={doc.image} className="w-12 h-12 rounded-full object-cover bg-slate-800 border border-slate-700 shadow-md" />
                         <div>
                             <h3 className="font-bold text-sm text-white">{doc.name}</h3>
+                            <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
+                                <Mail size={10} className="text-teal-500" /> {docEmail}
+                            </p>
                             <p className="text-xs text-slate-400 flex items-center gap-1 mt-1">
                                 <IndianRupee size={12} className={netPay > 0 ? "text-amber-500" : "text-green-500"}/> 
                                 Pending: <span className={netPay > 0 ? "text-amber-500 font-bold" : "text-green-500 font-bold"}>₹{netPay.toLocaleString()}</span>
