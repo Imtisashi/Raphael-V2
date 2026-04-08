@@ -8,7 +8,7 @@ import DashboardView from './components/views/Dashboard';
 import DoctorDashboard from './components/views/DoctorDashboard';
 import AdminDashboard from './components/views/AdminDashboard';
 import ProfileView from './components/views/Profile';
-import { CheckCircle, Zap, Search, Calendar, User, LogOut, ShieldCheck, X, AlertCircle, Settings, Sun, Moon, Type, Download } from 'lucide-react';
+import { CheckCircle, Zap, Search, Calendar, User, LogOut, ShieldCheck, X, AlertCircle, Settings, Sun, Moon, Type, Bell } from 'lucide-react';
 import Button from './components/ui/Button';
 
 const ADMIN_UPI_HANDLE = import.meta.env.VITE_ADMIN_UPI_HANDLE;
@@ -64,18 +64,38 @@ const SettingsModal = ({ onClose, settings, setSettings }) => {
   );
 };
 
+// UPGRADED TOAST FOR NOTIFICATIONS
 const Toast = ({ notification, onClose }) => {
   if (!notification) return null;
+  
+  let bgColor = 'bg-slate-800 text-white';
+  let Icon = Bell;
+  let iconColor = 'text-blue-400';
+
+  if (notification.type === 'error') {
+    bgColor = 'bg-red-500 text-white';
+    Icon = AlertCircle;
+    iconColor = 'text-white';
+  } else if (notification.type === 'success') {
+    bgColor = 'bg-slate-800 text-white border border-slate-700';
+    Icon = CheckCircle;
+    iconColor = 'text-green-400';
+  } else if (notification.type === 'info') {
+    bgColor = 'bg-blue-600 text-white shadow-blue-900/50';
+    Icon = Bell;
+    iconColor = 'text-white animate-bounce';
+  }
+
   return (
-    <div className={`fixed top-4 left-4 right-4 z-50 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-top-4 duration-300 ${notification.type === 'error' ? 'bg-red-500 text-white' : 'bg-slate-800 text-white'}`}>
-      {notification.type === 'success' ? <CheckCircle size={20} className="text-green-400 shrink-0" /> : <AlertCircle size={20} className="text-white shrink-0" />}
+    <div className={`fixed top-4 left-4 right-4 z-50 px-4 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-top-4 duration-300 ${bgColor}`}>
+      <Icon size={20} className={`${iconColor} shrink-0`} />
       <p className="font-semibold text-sm flex-1">{notification.message}</p>
-      <button onClick={onClose} className="ml-2 opacity-70 hover:opacity-100 p-1"><X size={16} /></button>
+      <button onClick={onClose} className="ml-2 opacity-70 hover:opacity-100 p-1 bg-black/10 rounded-full"><X size={16} /></button>
     </div>
   );
 };
 
-// UPDATED PAYMENT MODAL
+// PAYMENT MODAL
 const PaymentModal = ({ appointment, onClose, onConfirm }) => {
   const [txnId, setTxnId] = useState('');
   const PLATFORM_FEE = 50;
@@ -125,7 +145,7 @@ const SuccessView = ({ setView }) => (
     </div>
     <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Request Sent!</h1>
     <p className="text-slate-500 dark:text-slate-400 mb-8">
-      Your booking request has been sent to the doctor. You will be asked to pay once they approve it.
+      Your booking request has been sent to the doctor. You will be notified once they approve it.
     </p>
     <div className="space-y-3 w-full">
       <Button onClick={() => setView('dashboard')} className="w-full">Check Status</Button>
@@ -149,7 +169,6 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [appSettings, setAppSettings] = useState({ theme: 'light', largeText: false });
   
-  // Payment State
   const [payingAppt, setPayingAppt] = useState(null);
 
   // Check for saved user session on initial load
@@ -167,6 +186,69 @@ export default function App() {
     })();
   }, []);
 
+  const showToast = useCallback((message, type = 'success') => {
+    setNotification({ message, type });
+    // Keep info notifications slightly longer to read
+    const duration = type === 'info' ? 6000 : 4000;
+    setTimeout(() => setNotification(null), duration);
+  }, []);
+
+  const fetchMyVisits = useCallback(async () => {
+    if (user && user.role === 'patient') {
+      const { data } = await supabase.from('appointments').select('*').eq('patient_name', user.name).order('id', { ascending: false });
+      if (data) setAppointments(data);
+    }
+  }, [user]);
+
+  // --- SUPABASE REALTIME NOTIFICATIONS ---
+  useEffect(() => {
+    if (!user) return;
+
+    // Create a unique channel for notifications
+    const notificationChannel = supabase.channel('realtime_appointments');
+
+    // 1. Listen for NEW Bookings (Fires for Doctors & Admins)
+    notificationChannel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'appointments' }, (payload) => {
+      const newAppt = payload.new;
+      
+      // Notify Admin
+      if (user.role === 'admin') {
+        showToast(`New booking request: ${newAppt.patient_name} -> Dr. ${newAppt.doctor_name}`, 'info');
+      } 
+      // Notify Specific Doctor
+      else if (user.role === 'doctor' && user.doctorId === newAppt.doctor_id) {
+        showToast(`🔔 New appointment request from ${newAppt.patient_name}!`, 'info');
+      }
+    });
+
+    // 2. Listen for UPDATES (Fires for Patients when Dr. Accepts/Rejects)
+    notificationChannel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'appointments' }, (payload) => {
+      const updatedAppt = payload.new;
+      
+      if (user.role === 'patient' && user.name === updatedAppt.patient_name) {
+         if (updatedAppt.status === 'Accepted') {
+            showToast(`Good news! Dr. ${updatedAppt.doctor_name} accepted your request. Please pay to confirm.`, 'info');
+            fetchMyVisits(); // Auto refresh their dashboard
+         } else if (updatedAppt.status === 'Cancelled by Doctor') {
+            showToast(`Dr. ${updatedAppt.doctor_name} rejected your booking request.`, 'error');
+            fetchMyVisits();
+         } else if (updatedAppt.payment_status === 'Verified & Paid') {
+            showToast(`Admin verified your payment! Booking Confirmed.`, 'success');
+            fetchMyVisits();
+         }
+      }
+    });
+
+    // Subscribe to the channel
+    notificationChannel.subscribe();
+
+    // Cleanup on unmount or user change
+    return () => {
+      supabase.removeChannel(notificationChannel);
+    };
+  }, [user, showToast, fetchMyVisits]); // Re-run if user or dependencies change
+
+
   useEffect(() => {
     const root = document.documentElement;
     if (appSettings.theme === 'dark') root.classList.add('dark');
@@ -175,10 +257,6 @@ export default function App() {
     else root.style.fontSize = '16px';
   }, [appSettings]);
 
-  const showToast = useCallback((message, type = 'success') => {
-    setNotification({ message, type });
-    setTimeout(() => setNotification(null), 4000);
-  }, []);
 
   const handleLogin = (userData, rememberMe = true) => {
     setUser(userData);
@@ -202,12 +280,6 @@ export default function App() {
     setView(targetView);
   }, [user]);
 
-  const fetchMyVisits = useCallback(async () => {
-    if (user && user.role === 'patient') {
-      const { data } = await supabase.from('appointments').select('*').eq('patient_name', user.name).order('id', { ascending: false });
-      if (data) setAppointments(data);
-    }
-  }, [user]);
 
   useEffect(() => {
     (async () => {
@@ -249,7 +321,7 @@ export default function App() {
       patient_name: user.name || "Guest",
       slot: selectedSlot,
       appointment_date: selectedDate.toISOString(), 
-      status: "Pending Approval",  // New Status
+      status: "Pending Approval", 
       payment_status: "Unpaid",
       amount: selectedDoctor.price,
       utr_retries: 0,
@@ -277,7 +349,7 @@ export default function App() {
     setPayingAppt(null);
     if (error) showToast("Error: " + error.message, "error");
     else {
-        showToast("Payment sent for verification!");
+        showToast("Payment sent to Admin for verification!", "info");
         fetchMyVisits();
     }
   };
@@ -350,7 +422,7 @@ export default function App() {
             <SEO title="Doctor Dashboard" description="Manage schedule" />
             <Toast notification={notification} onClose={() => setNotification(null)} />
             {renderSettings}
-            <DoctorDashboard user={user} logout={handleLogout} setView={setView} showToast={showToast} />
+            <DoctorDashboard user={user} logout={handleLogout} showToast={showToast} />
         </>
     );
   }
@@ -379,7 +451,7 @@ export default function App() {
         <div className={`min-h-screen ${themeClass} pb-20 md:pb-0 transition-colors duration-300`}>
         <div className={`w-full md:max-w-md mx-auto min-h-screen relative shadow-none md:shadow-2xl overflow-hidden flex flex-col ${appSettings.theme === 'dark' ? 'bg-slate-800' : 'bg-white'}`}>
             <div className="bg-slate-900 text-[10px] text-slate-500 py-2 px-4 flex justify-between items-center sticky top-0 z-30">
-                <span className="flex items-center gap-1"><ShieldCheck size={12} className="text-teal-500"/> RAPHA'L v13.0</span>
+                <span className="flex items-center gap-1"><ShieldCheck size={12} className="text-teal-500"/> RAPHA'L v14.0 <span className="ml-2 bg-teal-500/20 text-teal-400 px-2 rounded-full flex items-center gap-1"><Bell size={8}/> Realtime Active</span></span>
                 <button onClick={() => setShowSettings(true)} className="text-slate-400 hover:text-white"><Settings size={14}/></button>
             </div>
             <div className="flex-1 overflow-y-auto scrollbar-hide">
