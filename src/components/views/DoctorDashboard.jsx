@@ -1,10 +1,27 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Calendar, Clock, MapPin, Users, Activity, Settings, LogOut, CheckCircle, XCircle, Check, X, User, ChevronRight } from 'lucide-react';
+import { Calendar, Clock, MapPin, Users, Activity, Settings, LogOut, CheckCircle, XCircle, Check, X, User, ChevronRight, Save, IndianRupee, CreditCard, FileText, Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import Button from '../ui/Button';
 
+// Standard time slots for the doctor to choose from
+const STANDARD_SLOTS = [
+  '08:00 AM', '09:00 AM', '10:00 AM', '11:00 AM', 
+  '12:00 PM', '01:00 PM', '02:00 PM', '03:00 PM', 
+  '04:00 PM', '05:00 PM', '06:00 PM', '07:00 PM'
+];
+
 export default function DoctorDashboard({ user, logout, showToast }) {
   const [appointments, setAppointments] = useState([]);
+  
+  // Profile Editing State
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [doctorProfile, setDoctorProfile] = useState({
+    price: '',
+    upi_id: '',
+    bio: '',
+    slots: []
+  });
   
   // Extract doctorId to a constant to satisfy React Compiler's dependency rules
   const doctorId = user?.doctorId;
@@ -16,14 +33,26 @@ export default function DoctorDashboard({ user, logout, showToast }) {
     }
   }, [doctorId]);
 
+  const fetchDoctorProfile = useCallback(async () => {
+    if (doctorId) {
+      const { data } = await supabase.from('doctors').select('*').eq('id', doctorId).single();
+      if (data) {
+        setDoctorProfile({
+          price: data.price ? data.price.toString().replace(/[^0-9]/g, '') : '', // Clean to just numbers
+          upi_id: data.upi_id || '',
+          bio: data.bio || '',
+          slots: data.slots || []
+        });
+      }
+    }
+  }, [doctorId]);
+
   useEffect(() => {
     (async () => {
-      if (doctorId) {
-        const { data } = await supabase.from('appointments').select('*').eq('doctor_id', doctorId).order('appointment_date', { ascending: true });
-        if (data) setAppointments(data);
-      }
+      fetchAppointments();
+      fetchDoctorProfile();
     })();
-  }, [doctorId]);
+  }, [fetchAppointments, fetchDoctorProfile]);
 
   // Handle Approvals
   const handleAction = async (apptId, action) => {
@@ -34,6 +63,38 @@ export default function DoctorDashboard({ user, logout, showToast }) {
     else {
         showToast(action === 'accept' ? "Request Accepted! Waiting for patient payment." : "Request Rejected.");
         fetchAppointments();
+    }
+  };
+
+  // Profile Edit Handlers
+  const toggleSlot = (slot) => {
+    setDoctorProfile(prev => ({
+      ...prev,
+      slots: prev.slots.includes(slot) 
+        ? prev.slots.filter(s => s !== slot) 
+        : [...prev.slots, slot].sort((a, b) => {
+            // Simple sorting logic to keep times in order
+            return new Date('1970/01/01 ' + a) - new Date('1970/01/01 ' + b);
+        })
+    }));
+  };
+
+  const handleSaveProfile = async () => {
+    setIsSavingProfile(true);
+    const { error } = await supabase.from('doctors').update({
+      price: `₹${doctorProfile.price}`,
+      upi_id: doctorProfile.upi_id,
+      bio: doctorProfile.bio,
+      slots: doctorProfile.slots
+    }).eq('id', doctorId);
+    
+    setIsSavingProfile(false);
+
+    if (error) {
+      showToast("Error saving profile: " + error.message, "error");
+    } else {
+      showToast("Profile updated successfully!", "success");
+      setIsEditingProfile(false);
     }
   };
 
@@ -57,6 +118,100 @@ export default function DoctorDashboard({ user, logout, showToast }) {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-24 md:pb-0 font-sans flex flex-col items-center transition-colors duration-300">
       
+      {/* EDIT PROFILE FULL-SCREEN MODAL */}
+      {isEditingProfile && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-slate-50 dark:bg-slate-950 animate-in slide-in-from-bottom-full duration-300 w-full md:max-w-md md:mx-auto shadow-2xl">
+          <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900 shrink-0">
+             <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+               <Settings size={20} className="text-teal-500"/> Edit Profile & Settings
+             </h2>
+             <button onClick={() => setIsEditingProfile(false)} className="p-2 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors">
+               <X size={20}/>
+             </button>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+             {/* Fee */}
+             <div>
+               <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Consultation Fee</label>
+               <div className="relative">
+                  <IndianRupee size={16} className="absolute left-3 top-3.5 text-slate-400" />
+                  <input 
+                    type="number" 
+                    value={doctorProfile.price} 
+                    onChange={e => setDoctorProfile({...doctorProfile, price: e.target.value})} 
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-4 py-3 text-sm outline-none focus:border-teal-500 text-slate-900 dark:text-white transition-colors" 
+                    placeholder="e.g. 500"
+                  />
+               </div>
+             </div>
+
+             {/* UPI ID */}
+             <div>
+               <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">UPI ID (For Payouts)</label>
+               <div className="relative">
+                  <CreditCard size={16} className="absolute left-3 top-3.5 text-slate-400" />
+                  <input 
+                    type="text" 
+                    value={doctorProfile.upi_id} 
+                    onChange={e => setDoctorProfile({...doctorProfile, upi_id: e.target.value})} 
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-4 py-3 text-sm outline-none focus:border-teal-500 text-slate-900 dark:text-white transition-colors" 
+                    placeholder="yourname@bank"
+                  />
+               </div>
+               <p className="text-[10px] text-slate-400 mt-1 ml-1">This is where the admin will send your earnings.</p>
+             </div>
+
+             {/* Bio */}
+             <div>
+               <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">About Me (Bio)</label>
+               <div className="relative">
+                  <FileText size={16} className="absolute left-3 top-3.5 text-slate-400" />
+                  <textarea 
+                    value={doctorProfile.bio} 
+                    onChange={e => setDoctorProfile({...doctorProfile, bio: e.target.value})} 
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-4 py-3 text-sm outline-none focus:border-teal-500 text-slate-900 dark:text-white transition-colors min-h-[100px] resize-none" 
+                    placeholder="Brief description of your expertise..."
+                  />
+               </div>
+             </div>
+
+             {/* Slots */}
+             <div>
+               <label className="text-xs font-bold text-slate-500 uppercase mb-2 flex justify-between items-end">
+                 Available Time Slots
+                 <span className="text-[10px] bg-teal-100 text-teal-700 dark:bg-teal-500/20 dark:text-teal-400 px-2 py-0.5 rounded font-bold">
+                   {doctorProfile.slots.length} Selected
+                 </span>
+               </label>
+               <div className="grid grid-cols-3 gap-2">
+                  {STANDARD_SLOTS.map(slot => {
+                      const isSelected = doctorProfile.slots.includes(slot);
+                      return (
+                          <button 
+                            key={slot} 
+                            onClick={() => toggleSlot(slot)} 
+                            className={`py-3 text-xs font-bold rounded-xl border transition-all ${isSelected ? 'bg-teal-600 border-teal-600 text-white shadow-md shadow-teal-500/30' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-teal-500'}`}
+                          >
+                             {slot}
+                          </button>
+                      )
+                  })}
+               </div>
+               <p className="text-[10px] text-slate-400 mt-2 ml-1">Tap times to toggle them on or off for your patients.</p>
+             </div>
+          </div>
+          
+          <div className="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shrink-0">
+             <Button onClick={handleSaveProfile} disabled={isSavingProfile} className="w-full py-4 text-sm font-bold flex items-center justify-center gap-2">
+               {isSavingProfile ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />} 
+               {isSavingProfile ? 'Saving Changes...' : 'Save Profile Settings'}
+             </Button>
+          </div>
+        </div>
+      )}
+
+
       {/* PREMIUM HEADER */}
       <div className="w-full max-w-md bg-gradient-to-br from-teal-900 via-slate-900 to-slate-900 rounded-b-[2.5rem] pt-12 pb-20 px-6 shadow-2xl relative overflow-hidden shrink-0">
         {/* Decorative Background Elements */}
@@ -73,9 +228,14 @@ export default function DoctorDashboard({ user, logout, showToast }) {
                 <h1 className="text-2xl font-bold tracking-tight">{displayName}</h1>
              </div>
           </div>
-          <button onClick={logout} className="p-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-full hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/30 transition-all text-slate-300">
-            <LogOut size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setIsEditingProfile(true)} className="p-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-full hover:bg-white/20 transition-all text-slate-300">
+              <Settings size={18} />
+            </button>
+            <button onClick={logout} className="p-3 bg-white/5 backdrop-blur-sm border border-white/10 rounded-full hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/30 transition-all text-slate-300">
+              <LogOut size={18} />
+            </button>
+          </div>
         </div>
       </div>
 
