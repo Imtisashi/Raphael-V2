@@ -4,9 +4,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { generateAdminReport } from '../../utils/pdfGenerator';
 import Button from '../ui/Button';
 
-// Modal for paying the doctor individually
 const DoctorPayoutModal = ({ doctor, amount, onClose, onConfirm }) => {
-  // Fallback if doctor didn't enter a UPI ID
   const targetUpi = doctor.upi_id || "not-provided@upi"; 
   const upiLink = `upi://pay?pa=${targetUpi}&pn=${encodeURIComponent(doctor.name)}&am=${amount}&cu=INR&tn=Raphal Settlement`;
   const qrUrl = `https://quickchart.io/qr?text=${encodeURIComponent(upiLink)}&size=200`;
@@ -18,31 +16,24 @@ const DoctorPayoutModal = ({ doctor, amount, onClose, onConfirm }) => {
           <h2 className="text-xl font-bold mb-1">Settle Doctor Dues</h2>
           <p className="text-teal-100 text-sm">Pay Dr. {doctor.name}</p>
         </div>
-        
         <div className="p-6 flex flex-col items-center gap-4">
           <div className="w-full bg-slate-800 rounded-xl p-4 border border-slate-700">
             <div className="flex justify-between text-sm text-slate-400 mb-2"><span>Target UPI:</span><span className="font-mono text-teal-400">{doctor.upi_id || "MISSING"}</span></div>
             <div className="flex justify-between text-lg font-bold text-white border-t border-slate-700 pt-2 mt-2"><span>Total Payable:</span><span>₹{amount}</span></div>
           </div>
-
           {doctor.upi_id ? (
             <>
-                <div className="bg-white p-2 rounded-xl border-2 border-slate-100 shadow-inner">
-                    <img src={qrUrl} alt="Payment QR" className="w-48 h-48" />
-                </div>
+                <div className="bg-white p-2 rounded-xl border-2 border-slate-100 shadow-inner"><img src={qrUrl} alt="Payment QR" className="w-48 h-48" /></div>
                 <p className="text-xs text-slate-400 text-center">Scan with GPay/PhonePe to pay the doctor directly.</p>
-                
                 <div className="flex gap-3 w-full mt-4">
                     <Button variant="ghost" onClick={onClose} className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300">Cancel</Button>
-                    <Button onClick={() => onConfirm(doctor.id)} className="flex-1 bg-green-600 hover:bg-green-700 text-white border-none">
-                       Confirm Settle
-                    </Button>
+                    <Button onClick={() => onConfirm(doctor.id)} className="flex-1 bg-green-600 hover:bg-green-700 border-none">Confirm Settle</Button>
                 </div>
             </>
           ) : (
             <div className="text-center space-y-4">
                 <AlertTriangle size={48} className="mx-auto text-amber-500" />
-                <p className="text-amber-400 text-sm">This doctor has not provided a UPI ID. You must contact them manually to settle.</p>
+                <p className="text-amber-400 text-sm">Doctor has not provided a UPI ID.</p>
                 <Button onClick={onClose} className="w-full">Close</Button>
             </div>
           )}
@@ -56,10 +47,7 @@ export default function AdminDashboard({ logout, doctors, onDelete }) {
   const [appointments, setAppointments] = useState([]);
   const [stats, setStats] = useState({ totalRevenue: 0, pendingPayouts: 0 });
   const [loading, setLoading] = useState(true);
-  
-  // State for the payout modal
   const [payoutData, setPayoutData] = useState(null); 
-  // State for mapping doctors to their emails
   const [doctorEmails, setDoctorEmails] = useState({});
 
   const refreshData = async () => {
@@ -72,7 +60,8 @@ export default function AdminDashboard({ logout, doctors, onDelete }) {
         const unpaidAppts = validAppts.filter(a => !a.is_paid_out);
         const payouts = unpaidAppts.reduce((sum, a) => {
             const amt = parseInt(a.amount?.replace(/[^0-9]/g, '')) || 0;
-            return sum + (amt - 50);
+            // Accounting: If cash, Admin holds nothing, Doctor holds all. Doctor owes Admin 50.
+            return a.payment_mode === 'Cash' ? sum - 50 : sum + (amt - 50);
         }, 0);
 
         setStats({ totalRevenue: platformRevenue, pendingPayouts: payouts });
@@ -83,15 +72,10 @@ export default function AdminDashboard({ logout, doctors, onDelete }) {
       let mounted = true;
       const initFetch = async () => {
         const { data: appts } = await supabase.from('appointments').select('*').order('id', { ascending: false });
-        
-        // Fetch doctor emails from the users table
         const { data: usersData } = await supabase.from('users').select('name, email').eq('role', 'doctor');
+        
         const emailsMap = {};
-        if (usersData) {
-            usersData.forEach(u => {
-                emailsMap[u.name] = u.email;
-            });
-        }
+        if (usersData) usersData.forEach(u => emailsMap[u.name] = u.email);
 
         if (mounted) {
             setDoctorEmails(emailsMap);
@@ -102,7 +86,7 @@ export default function AdminDashboard({ logout, doctors, onDelete }) {
                 const unpaidAppts = validAppts.filter(a => !a.is_paid_out);
                 const payouts = unpaidAppts.reduce((sum, a) => {
                     const amt = parseInt(a.amount?.replace(/[^0-9]/g, '')) || 0;
-                    return sum + (amt - 50);
+                    return a.payment_mode === 'Cash' ? sum - 50 : sum + (amt - 50);
                 }, 0);
                 setStats({ totalRevenue: platformRevenue, pendingPayouts: payouts });
             }
@@ -114,52 +98,43 @@ export default function AdminDashboard({ logout, doctors, onDelete }) {
   }, []);
 
   const handleVerifyPayment = async (apptId) => {
-    if (window.confirm("Confirm that you received the payment in your bank account?")) {
-        const { error } = await supabase.from('appointments').update({ 
-            status: "Confirmed", 
-            payment_status: "Verified & Paid" 
-        }).eq('id', apptId);
+    if (window.confirm("Confirm that you received the payment?")) {
+        const { error } = await supabase.from('appointments').update({ status: "Confirmed", payment_status: "Verified & Paid" }).eq('id', apptId);
         if (!error) refreshData();
     }
   };
 
-  const handleRejectPayment = async (apptId) => {
-    if (window.confirm("Reject this transaction?")) {
+  const handleRejectPayment = async (appt) => {
+    if (window.confirm("Reject this UTR? The patient will be notified.")) {
+        const newRetries = (appt.utr_retries || 0) + 1;
         const { error } = await supabase.from('appointments').update({ 
-            status: "Cancelled", 
-            payment_status: "Rejected" 
-        }).eq('id', apptId);
+            status: "Payment Rejected", 
+            payment_status: "Rejected",
+            utr_retries: newRetries
+        }).eq('id', appt.id);
         if (!error) refreshData();
     }
   };
   
-  // Triggers the actual DB update directly after the admin confirms they paid the QR code
   const handleConfirmSettle = async (docId) => {
       try {
-          const { error } = await supabase.from('appointments')
-            .update({ is_paid_out: true })
-            .eq('doctor_id', docId)
-            .eq('status', 'Confirmed');
-            
+          const { error } = await supabase.from('appointments').update({ is_paid_out: true }).eq('doctor_id', docId).eq('status', 'Confirmed');
           if (error) throw error;
-          
-          setPayoutData(null); // Close modal
-          refreshData(); // Refresh data instantly
-          
+          setPayoutData(null); 
+          refreshData(); 
       } catch (err) {
           alert("Failed to settle dues: " + err.message);
       }
   };
 
-  // Restored PDF Generation logic
   const handleExportPDF = () => {
-    const payoutData = doctors.map(doc => {
+    const payoutDataList = doctors.map(doc => {
        const docAppts = appointments.filter(a => a.doctor_id === doc.id);
        const totalCollected = docAppts.reduce((sum, a) => sum + (parseInt(a.amount?.replace(/\D/g,'')) || 0), 0);
        const platformShare = docAppts.length * 50;
        return { doctorName: doc.name, totalAppointments: docAppts.length, totalCollected, platformShare, doctorShare: totalCollected - platformShare };
     });
-    generateAdminReport(payoutData);
+    generateAdminReport(payoutDataList);
   };
 
   const pendingPayments = appointments.filter(a => a.payment_status === 'Pending Verification' || a.status === 'Payment Verifying');
@@ -168,16 +143,7 @@ export default function AdminDashboard({ logout, doctors, onDelete }) {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white flex flex-col relative">
-      
-      {/* PAYOUT MODAL INJECTION */}
-      {payoutData && (
-        <DoctorPayoutModal 
-            doctor={payoutData.doctor} 
-            amount={payoutData.amount} 
-            onClose={() => setPayoutData(null)} 
-            onConfirm={handleConfirmSettle} 
-        />
-      )}
+      {payoutData && <DoctorPayoutModal doctor={payoutData.doctor} amount={payoutData.amount} onClose={() => setPayoutData(null)} onConfirm={handleConfirmSettle} />}
 
       <div className="p-6 border-b border-white/10 flex justify-between items-center sticky top-0 bg-slate-900 z-10">
         <div className="flex items-center gap-3">
@@ -189,11 +155,11 @@ export default function AdminDashboard({ logout, doctors, onDelete }) {
 
       <div className="p-6 grid grid-cols-2 gap-4">
         <div className="bg-slate-800 p-5 rounded-2xl border border-white/5 shadow-xl">
-          <div className="flex items-center gap-2 mb-2 text-blue-400"><Users size={18} /><span className="text-xs font-bold uppercase tracking-wider">Revenue</span></div>
+          <div className="flex items-center gap-2 mb-2 text-blue-400"><Users size={18} /><span className="text-xs font-bold uppercase tracking-wider">Platform Pool</span></div>
           <div className="text-3xl font-bold text-white">₹{stats.totalRevenue.toLocaleString()}</div>
         </div>
         <div className="bg-slate-800 p-5 rounded-2xl border border-white/5 shadow-xl">
-           <div className="flex items-center gap-2 mb-2 text-teal-400"><Activity size={18} /><span className="text-xs font-bold uppercase tracking-wider">Payable</span></div>
+           <div className="flex items-center gap-2 mb-2 text-teal-400"><Activity size={18} /><span className="text-xs font-bold uppercase tracking-wider">Payable Dues</span></div>
            <div className="text-3xl font-bold text-white">₹{stats.pendingPayouts.toLocaleString()}</div>
         </div>
       </div>
@@ -206,11 +172,11 @@ export default function AdminDashboard({ logout, doctors, onDelete }) {
                     <div key={appt.id} className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-xl flex justify-between items-center">
                         <div>
                             <p className="text-sm font-bold text-amber-200">UTR: {appt.transaction_id}</p>
-                            <p className="text-xs text-slate-400">Amount: {appt.amount} • From: {appt.patient_name}</p>
+                            <p className="text-xs text-slate-400">Amt: {appt.amount} • Patient: {appt.patient_name} • Try: {(appt.utr_retries || 0) + 1}</p>
                         </div>
                         <div className="flex gap-2">
                             <Button onClick={() => handleVerifyPayment(appt.id)} className="text-xs py-1 px-3 bg-green-600 hover:bg-green-700">Approve</Button>
-                            <Button onClick={() => handleRejectPayment(appt.id)} className="text-xs py-1 px-3 bg-red-600 hover:bg-red-700">Reject</Button>
+                            <Button onClick={() => handleRejectPayment(appt)} className="text-xs py-1 px-3 bg-red-600 hover:bg-red-700">Reject</Button>
                         </div>
                     </div>
                 ))}
@@ -218,16 +184,13 @@ export default function AdminDashboard({ logout, doctors, onDelete }) {
           </div>
       )}
 
-      {/* Restored Payout Report Download Button */}
       <div className="px-6 mb-4">
-         <Button onClick={handleExportPDF} className="w-full flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 border-none shadow-lg shadow-teal-900/50">
-            <FileText size={18} /> Download Payout Report (PDF)
-         </Button>
+         <Button onClick={handleExportPDF} className="w-full flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 border-none shadow-lg shadow-teal-900/50"><FileText size={18} /> Download Payout Report</Button>
       </div>
 
       <div className="flex-1 bg-slate-950 rounded-t-3xl p-6 overflow-hidden flex flex-col border-t border-white/10">
         <h2 className="font-bold text-lg mb-4 flex justify-between items-center text-white">
-          Manage Doctor Payouts <span className="text-xs font-normal text-slate-400 bg-slate-800 px-3 py-1 rounded-full">{doctors.length} Registered</span>
+          Doctor Payouts <span className="text-xs font-normal text-slate-400 bg-slate-800 px-3 py-1 rounded-full">{doctors.length} Registered</span>
         </h2>
         
         <div className="overflow-y-auto flex-1 space-y-3 pb-10">
@@ -237,7 +200,7 @@ export default function AdminDashboard({ logout, doctors, onDelete }) {
                
                const netPay = unpaidAppts.reduce((sum, a) => {
                    const amt = parseInt(a.amount?.replace(/[^0-9]/g, '')) || 0;
-                   return sum + (amt - 50);
+                   return a.payment_mode === 'Cash' ? sum - 50 : sum + (amt - 50);
                }, 0);
 
                const docEmail = doctorEmails[doc.name] || 'No email registered';
@@ -248,22 +211,24 @@ export default function AdminDashboard({ logout, doctors, onDelete }) {
                         <img src={doc.image} className="w-12 h-12 rounded-full object-cover bg-slate-800 border border-slate-700 shadow-md" />
                         <div>
                             <h3 className="font-bold text-sm text-white">{doc.name}</h3>
-                            <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
-                                <Mail size={10} className="text-teal-500" /> {docEmail}
-                            </p>
-                            <p className="text-xs text-slate-400 flex items-center gap-1 mt-1">
-                                <IndianRupee size={12} className={netPay > 0 ? "text-amber-500" : "text-green-500"}/> 
-                                Pending: <span className={netPay > 0 ? "text-amber-500 font-bold" : "text-green-500 font-bold"}>₹{netPay.toLocaleString()}</span>
+                            <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5"><Mail size={10} className="text-teal-500" /> {docEmail}</p>
+                            
+                            <p className="text-xs flex items-center gap-1 mt-1">
+                                {netPay < 0 ? (
+                                    <><AlertTriangle size={12} className="text-red-500"/> <span className="text-red-500 font-bold">Owes Admin: ₹{Math.abs(netPay)}</span> (Cash Collected)</>
+                                ) : (
+                                    <><IndianRupee size={12} className={netPay > 0 ? "text-amber-500" : "text-green-500"}/> <span className="text-slate-400">Pending:</span> <span className={netPay > 0 ? "text-amber-500 font-bold" : "text-green-500 font-bold"}>₹{netPay.toLocaleString()}</span></>
+                                )}
                             </p>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                       {netPay > 0 && (
+                       {netPay !== 0 && (
                            <button 
-                             onClick={() => setPayoutData({ doctor: doc, amount: netPay })} 
-                             className="px-3 py-2 bg-teal-500/20 text-teal-400 hover:bg-teal-500 hover:text-white rounded-lg transition-all flex items-center gap-2 text-xs font-bold border border-teal-500/30"
+                             onClick={() => setPayoutData({ doctor: doc, amount: Math.abs(netPay) })} 
+                             className={`px-3 py-2 rounded-lg transition-all flex items-center gap-2 text-xs font-bold border ${netPay > 0 ? 'bg-teal-500/20 text-teal-400 border-teal-500/30 hover:bg-teal-500 hover:text-white' : 'bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500 hover:text-white'}`}
                            >
-                             <CreditCard size={14}/> Settle Now
+                             <CheckSquare size={14}/> {netPay > 0 ? 'Settle Dues' : 'Mark Cleared'}
                            </button>
                        )}
                        <button onClick={() => onDelete(doc.id)} className="p-2 text-slate-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"><Trash2 size={18} /></button>

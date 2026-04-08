@@ -31,6 +31,7 @@ export default function LoginView({ onLogin, showToast }) {
   
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true); // Default ON
 
   const specialties = ['General Physician', 'Neurologist', 'Cardiologist', 'Dermatologist', 'Orthopedic', 'Pediatrician', 'Psychiatrist'];
 
@@ -170,7 +171,7 @@ export default function LoginView({ onLogin, showToast }) {
         const { data: docProfile } = await supabase.from('doctors').select('id').eq('name', data.name).single();
         if (docProfile) data.doctorId = docProfile.id;
       }
-      onLogin(data);
+      onLogin(data, rememberMe);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -226,7 +227,7 @@ export default function LoginView({ onLogin, showToast }) {
          currentUser.doctorId = docData.id;
       }
       if(showToast) showToast(`Welcome to Rapha'l, ${name}!`);
-      onLogin(currentUser);
+      onLogin(currentUser, rememberMe);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -264,7 +265,15 @@ export default function LoginView({ onLogin, showToast }) {
                     <input type={showPassword ? "text" : "password"} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-900/60 border border-slate-700/50 rounded-2xl pl-12 pr-12 py-4 text-white focus:bg-slate-900/80 focus:ring-2 focus:ring-teal-500 focus:border-transparent outline-none transition-all duration-300 focus:scale-[1.02] placeholder:text-slate-500 shadow-sm" required />
                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-teal-400"><Eye size={20} /></button>
                 </div>
-                <div className="flex justify-end">
+                
+                <div className="flex justify-between items-center mt-2 px-1">
+                    <label className="flex items-center gap-2 cursor-pointer group">
+                        <div className="relative flex items-center justify-center">
+                            <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="peer appearance-none w-4 h-4 border-2 border-slate-600 rounded-md checked:bg-teal-500 checked:border-teal-500 transition-all" />
+                            <CheckCircle size={12} className="absolute text-white opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none" />
+                        </div>
+                        <span className="text-xs font-medium text-slate-400 group-hover:text-slate-300 transition-colors">Keep me signed in</span>
+                    </label>
                     <button type="button" onClick={goToForgot} className="text-xs font-medium text-slate-400 hover:text-teal-400 transition-colors">
                         Forgot Password?
                     </button>
@@ -382,6 +391,14 @@ export default function LoginView({ onLogin, showToast }) {
 
                 <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-900/60 border border-slate-700/50 rounded-xl px-4 py-3.5 text-white outline-none focus:ring-2 focus:ring-teal-500 transition-all placeholder:text-slate-500" />
                 <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-900/60 border border-slate-700/50 rounded-xl px-4 py-3.5 text-white outline-none focus:ring-2 focus:ring-teal-500 transition-all placeholder:text-slate-500" />
+
+                <label className="flex items-center gap-2 cursor-pointer group mt-2 px-1">
+                    <div className="relative flex items-center justify-center">
+                        <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="peer appearance-none w-4 h-4 border-2 border-slate-600 rounded-md checked:bg-teal-500 checked:border-teal-500 transition-all" />
+                        <CheckCircle size={12} className="absolute text-white opacity-0 peer-checked:opacity-100 transition-opacity pointer-events-none" />
+                    </div>
+                    <span className="text-xs font-medium text-slate-400 group-hover:text-slate-300 transition-colors">Keep me signed in</span>
+                </label>
 
                 {error && <p className="text-red-400 text-sm text-center bg-red-500/10 py-2 rounded-lg">{error}</p>}
                 

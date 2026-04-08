@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Camera, DollarSign, Stethoscope, Mail, Phone, MapPin, Droplet, AlertCircle, LogOut, Building, IndianRupee } from 'lucide-react';
+import { User, Camera, Save, DollarSign, Stethoscope, Mail, Phone, MapPin, Droplet, AlertCircle, LogOut, Building, IndianRupee } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient'; 
 import Button from '../ui/Button'; 
 
@@ -158,6 +158,7 @@ export default function ProfileView({ user, logout, showToast }) {
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Full Name</label>
+            {/* FIX: Removed bg-white, kept bg-slate-50 for consistency */}
             <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500" />
           </div>
           <div>
@@ -172,7 +173,7 @@ export default function ProfileView({ user, logout, showToast }) {
             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">District (Nagaland)</label>
             <div className="relative">
                 <MapPin size={16} className="absolute left-3 top-3.5 text-slate-400" />
-                <select value={district} onChange={(e) => setDistrict(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500 appearance-none bg-white">
+                <select value={district} onChange={(e) => setDistrict(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500 appearance-none">
                     {nagalandDistricts.map(d => <option key={d} value={d}>{d}</option>)}
                 </select>
             </div>
@@ -195,7 +196,7 @@ export default function ProfileView({ user, logout, showToast }) {
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Blood Group</label>
                     <div className="relative">
                         <Droplet size={14} className="absolute left-3 top-3.5 text-slate-400" />
-                        <select value={bloodGroup} onChange={(e) => setBloodGroup(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm appearance-none bg-white">
+                        <select value={bloodGroup} onChange={(e) => setBloodGroup(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm appearance-none">
                             {['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'].map(bg => <option key={bg} value={bg}>{bg}</option>)}
                         </select>
                     </div>

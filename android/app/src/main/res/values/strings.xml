@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Rapha\'l Health</string>
+    <string name="title_activity_main">Rapha\'l Health</string>
+    <string name="package_name">com.raphael.health</string>
+    <string name="custom_url_scheme">com.raphael.health</string>
+</resources>
