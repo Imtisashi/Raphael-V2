@@ -134,13 +134,17 @@ export default function DoctorDashboard({ user, logout, showToast }) {
   // Manual Notification Permission Request
   const requestPushPermission = async () => {
     try {
-      const { Capacitor } = await import('@capacitor/core');
+      // Use string variables to hide native imports from Vercel's web bundler
+      const corePkg = '@capacitor/core';
+      const pushPkg = '@capacitor/push-notifications';
+
+      const { Capacitor } = await import(/* @vite-ignore */ corePkg);
       if (!Capacitor.isNativePlatform()) {
         showToast("Push notifications are only available on the mobile app.", "info");
         return;
       }
       
-      const { PushNotifications } = await import('@capacitor/push-notifications');
+      const { PushNotifications } = await import(/* @vite-ignore */ pushPkg);
       let permStatus = await PushNotifications.checkPermissions();
       
       if (permStatus.receive === 'prompt') {
