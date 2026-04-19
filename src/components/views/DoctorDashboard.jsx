@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Calendar, Clock, MapPin, Users, Activity, Settings, LogOut, CheckCircle, XCircle, Check, X, User, ChevronRight, Save, IndianRupee, CreditCard, FileText, Loader2, Camera, BellRing } from 'lucide-react';
+import { Calendar, Clock, Activity, Settings, LogOut, Check, X, User, Save, IndianRupee, CreditCard, FileText, Loader2, Camera, BellRing } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import Button from '../ui/Button';
 
@@ -157,6 +157,7 @@ export default function DoctorDashboard({ user, logout, showToast }) {
         showToast("Permission denied. Enable it in your phone settings.", "error");
       }
     } catch (err) {
+      console.error("Push Notification Error:", err);
       showToast("Could not setup notifications.", "error");
     }
   };
@@ -393,7 +394,7 @@ export default function DoctorDashboard({ user, logout, showToast }) {
                                     </p>
                                 </div>
                             </div>
-                            <div className="bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold flex items-center gap-1">
+                            <div className="bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold inline-flex items-center gap-1">
                                 <Clock size={12} className="text-teal-500"/> {apt.slot}
                             </div>
                           </div>
@@ -457,7 +458,7 @@ export default function DoctorDashboard({ user, logout, showToast }) {
                             </div>
                             <div>
                                 <h3 className="font-bold text-slate-900 dark:text-white text-base group-hover:text-teal-600 transition-colors">{apt.patient_name}</h3>
-                                <div className="flex items-center gap-1.5 mt-1 text-xs font-bold text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded-md inline-flex">
+                                <div className="inline-flex items-center gap-1.5 mt-1 text-xs font-bold text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded-md">
                                     <Clock size={12} className="text-teal-500" /> {apt.slot}
                                 </div>
                             </div>
