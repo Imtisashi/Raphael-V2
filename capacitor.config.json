@@ -1,5 +1,10 @@
 {
-  "appId": "com.raphael.health",
-  "appName": "Rapha'l Health",
-  "webDir": "dist"
+  "appId": "com.raphal.health",
+  "appName": "Raphal Health",
+  "webDir": "dist",
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    }
+  }
 }
