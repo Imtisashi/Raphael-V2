@@ -78,7 +78,7 @@ const Toast = ({ notification, onClose }) => {
 
 const PaymentModal = ({ appointment, onClose, onConfirm }) => {
   const [txnId, setTxnId] = useState('');
-  const PLATFORM_FEE = 50;
+  const PLATFORM_FEE = 10;
   const cleanAmount = appointment.amount ? parseInt(appointment.amount.toString().replace(/[^0-9]/g, '')) : 0;
   const consultationFee = isNaN(cleanAmount) ? 0 : cleanAmount;
   const totalPayable = consultationFee + PLATFORM_FEE;

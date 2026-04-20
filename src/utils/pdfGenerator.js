@@ -68,7 +68,7 @@ export const generateReceipt = (appointment) => {
           appointment.payment_status?.toUpperCase() || 'PAID', 
           appointment.amount || '0'
         ],
-        ['Platform Service Charge', '-', 'INCLUDED', '₹50.00']
+        ['Platform Service Charge', '-', 'INCLUDED', '₹10.00']
       ],
       theme: 'grid',
       headStyles: { fillColor: primaryColor, textColor: 255, fontStyle: 'bold' },

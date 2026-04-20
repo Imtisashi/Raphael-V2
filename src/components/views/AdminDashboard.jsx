@@ -55,13 +55,13 @@ export default function AdminDashboard({ logout, doctors, onDelete }) {
     if (appts) {
         setAppointments(appts);
         const validAppts = appts.filter(a => a.status === 'Confirmed');
-        const platformRevenue = validAppts.length * 50;
+        const platformRevenue = validAppts.length * 10;
         
         const unpaidAppts = validAppts.filter(a => !a.is_paid_out);
         const payouts = unpaidAppts.reduce((sum, a) => {
             const amt = parseInt(a.amount?.replace(/[^0-9]/g, '')) || 0;
-            // Accounting: If cash, Admin holds nothing, Doctor holds all. Doctor owes Admin 50.
-            return a.payment_mode === 'Cash' ? sum - 50 : sum + (amt - 50);
+            // Accounting: If cash, Admin holds nothing, Doctor holds all. Doctor owes Admin 10.
+            return a.payment_mode === 'Cash' ? sum - 10 : sum + (amt - 10);
         }, 0);
 
         setStats({ totalRevenue: platformRevenue, pendingPayouts: payouts });
@@ -82,11 +82,11 @@ export default function AdminDashboard({ logout, doctors, onDelete }) {
             if (appts) {
                 setAppointments(appts);
                 const validAppts = appts.filter(a => a.status === 'Confirmed');
-                const platformRevenue = validAppts.length * 50;
+                const platformRevenue = validAppts.length * 10;
                 const unpaidAppts = validAppts.filter(a => !a.is_paid_out);
                 const payouts = unpaidAppts.reduce((sum, a) => {
                     const amt = parseInt(a.amount?.replace(/[^0-9]/g, '')) || 0;
-                    return a.payment_mode === 'Cash' ? sum - 50 : sum + (amt - 50);
+                    return a.payment_mode === 'Cash' ? sum - 10 : sum + (amt - 10);
                 }, 0);
                 setStats({ totalRevenue: platformRevenue, pendingPayouts: payouts });
             }
@@ -131,7 +131,7 @@ export default function AdminDashboard({ logout, doctors, onDelete }) {
     const payoutDataList = doctors.map(doc => {
        const docAppts = appointments.filter(a => a.doctor_id === doc.id);
        const totalCollected = docAppts.reduce((sum, a) => sum + (parseInt(a.amount?.replace(/\D/g,'')) || 0), 0);
-       const platformShare = docAppts.length * 50;
+       const platformShare = docAppts.length * 10;
        return { doctorName: doc.name, totalAppointments: docAppts.length, totalCollected, platformShare, doctorShare: totalCollected - platformShare };
     });
     generateAdminReport(payoutDataList);
@@ -200,7 +200,7 @@ export default function AdminDashboard({ logout, doctors, onDelete }) {
                
                const netPay = unpaidAppts.reduce((sum, a) => {
                    const amt = parseInt(a.amount?.replace(/[^0-9]/g, '')) || 0;
-                   return a.payment_mode === 'Cash' ? sum - 50 : sum + (amt - 50);
+                   return a.payment_mode === 'Cash' ? sum - 10 : sum + (amt - 10);
                }, 0);
 
                const docEmail = doctorEmails[doc.name] || 'No email registered';
