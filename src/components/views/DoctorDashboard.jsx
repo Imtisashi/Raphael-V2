@@ -131,38 +131,40 @@ export default function DoctorDashboard({ user, logout, showToast }) {
     }
   };
 
-  // Manual Notification Permission Request
+  // FIXED: Manual Notification Permission Request using window.Capacitor
   const requestPushPermission = async () => {
     try {
-      // Use string variables to hide native imports from Vercel's web bundler
-      const corePkg = '@capacitor/core';
-      const pushPkg = '@capacitor/push-notifications';
-
-      const { Capacitor } = await import(/* @vite-ignore */ corePkg);
-      if (!Capacitor.isNativePlatform()) {
-        showToast("Push notifications are only available on the mobile app.", "info");
-        return;
-      }
+      const cap = window.Capacitor;
       
-      const { PushNotifications } = await import(/* @vite-ignore */ pushPkg);
-      let permStatus = await PushNotifications.checkPermissions();
-      
-      if (permStatus.receive === 'prompt') {
-        permStatus = await PushNotifications.requestPermissions();
-      }
-      
-      if (permStatus.receive === 'granted') {
-        await PushNotifications.register();
-        PushNotifications.addListener('registration', async (token) => {
-           await supabase.from('doctors').update({ push_token: token.value }).eq('id', doctorId);
-        });
-        showToast("Notifications successfully enabled!", "success");
+      // Check if running on Android/iOS
+      if (cap && cap.isNativePlatform()) {
+        const PushNotifications = cap.Plugins.PushNotifications;
+        
+        if (PushNotifications) {
+            let permStatus = await PushNotifications.checkPermissions();
+            
+            if (permStatus.receive === 'prompt') {
+              permStatus = await PushNotifications.requestPermissions();
+            }
+            
+            if (permStatus.receive === 'granted') {
+              await PushNotifications.register();
+              PushNotifications.addListener('registration', async (token) => {
+                 await supabase.from('doctors').update({ push_token: token.value }).eq('id', doctorId);
+              });
+              showToast("Notifications successfully enabled!", "success");
+            } else {
+              showToast("Permission denied. Enable it in your phone settings.", "error");
+            }
+        } else {
+            showToast("Push Plugin not found in APK. Did you npx cap sync?", "error");
+        }
       } else {
-        showToast("Permission denied. Enable it in your phone settings.", "error");
+        showToast("Push notifications are only available on the mobile app.", "info");
       }
     } catch (err) {
       console.error("Push Notification Error:", err);
-      showToast("Could not setup notifications.", "error");
+      showToast("Could not setup notifications. See console.", "error");
     }
   };
 
@@ -184,13 +186,13 @@ export default function DoctorDashboard({ user, logout, showToast }) {
   const getInitials = (name) => name ? name.substring(0, 2).toUpperCase() : 'PT';
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-24 md:pb-0 font-sans flex flex-col items-center transition-colors duration-300">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-teal-50/50 dark:from-slate-950 dark:to-slate-900 text-slate-900 dark:text-slate-100 pb-24 md:pb-0 font-sans flex flex-col items-center transition-colors duration-300">
       
       {/* EDIT PROFILE FULL-SCREEN MODAL */}
       {isEditingProfile && (
         <div className="fixed inset-0 z-50 flex flex-col bg-slate-50 dark:bg-slate-950 animate-in slide-in-from-bottom-full duration-300 w-full md:max-w-md md:mx-auto shadow-2xl">
           <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900 shrink-0">
-             <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+             <h2 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
                <Settings size={20} className="text-teal-500"/> Profile & Settings
              </h2>
              <button onClick={() => setIsEditingProfile(false)} className="p-2 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors">
@@ -205,7 +207,7 @@ export default function DoctorDashboard({ user, logout, showToast }) {
                 <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleImageUpload} />
                 <div 
                   onClick={() => fileInputRef.current?.click()}
-                  className="relative w-28 h-28 rounded-full border-4 border-white shadow-xl cursor-pointer group bg-slate-200 flex items-center justify-center overflow-hidden"
+                  className="relative w-28 h-28 rounded-full border-4 border-white shadow-[0_10px_30px_-10px_rgba(13,148,136,0.3)] cursor-pointer group bg-slate-200 flex items-center justify-center overflow-hidden"
                 >
                   {doctorProfile.image ? (
                     <img src={doctorProfile.image} alt="Profile" className="w-full h-full object-cover group-hover:opacity-50 transition-opacity" />
@@ -227,28 +229,28 @@ export default function DoctorDashboard({ user, logout, showToast }) {
              </div>
 
              {/* App Settings Section */}
-             <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                 <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-2">
+             <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
+                 <h3 className="text-sm font-black text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-2">
                      <BellRing size={16} className="text-teal-500" /> App Permissions
                  </h3>
-                 <button onClick={requestPushPermission} className="w-full py-3 bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-400 rounded-xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-teal-100 transition-colors border border-teal-200 dark:border-teal-800/50">
+                 <button onClick={requestPushPermission} className="w-full py-3.5 bg-gradient-to-r from-teal-50 to-cyan-50 dark:from-teal-900/20 dark:to-cyan-900/20 text-teal-700 dark:text-teal-400 rounded-xl text-sm font-bold flex items-center justify-center gap-2 hover:shadow-md transition-all border border-teal-200/50 dark:border-teal-800/50">
                      Enable Push Notifications
                  </button>
              </div>
 
              {/* Professional Details Section */}
-             <div className="space-y-6 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                 <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 border-b border-slate-100 dark:border-slate-800 pb-2 mb-4">Professional Details</h3>
+             <div className="space-y-6 bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
+                 <h3 className="text-sm font-black text-slate-800 dark:text-slate-200 border-b border-slate-100 dark:border-slate-800 pb-2 mb-4">Professional Details</h3>
                  {/* Fee */}
                  <div>
                    <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Consultation Fee (₹)</label>
-                   <div className="relative">
+                   <div className="relative shadow-sm rounded-xl">
                       <IndianRupee size={16} className="absolute left-3 top-3.5 text-slate-400" />
                       <input 
                         type="number" 
                         value={doctorProfile.price} 
                         onChange={e => setDoctorProfile({...doctorProfile, price: e.target.value})} 
-                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-4 py-3 text-sm outline-none focus:border-teal-500 text-slate-900 dark:text-white transition-colors" 
+                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-teal-500/50 text-slate-900 dark:text-white transition-colors" 
                         placeholder="e.g. 500"
                       />
                    </div>
@@ -257,28 +259,28 @@ export default function DoctorDashboard({ user, logout, showToast }) {
                  {/* UPI ID */}
                  <div>
                    <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">UPI ID (For Payouts)</label>
-                   <div className="relative">
+                   <div className="relative shadow-sm rounded-xl">
                       <CreditCard size={16} className="absolute left-3 top-3.5 text-slate-400" />
                       <input 
                         type="text" 
                         value={doctorProfile.upi_id} 
                         onChange={e => setDoctorProfile({...doctorProfile, upi_id: e.target.value})} 
-                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-4 py-3 text-sm outline-none focus:border-teal-500 text-slate-900 dark:text-white transition-colors" 
+                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-teal-500/50 text-slate-900 dark:text-white transition-colors" 
                         placeholder="yourname@bank"
                       />
                    </div>
-                   <p className="text-[10px] text-slate-400 mt-1 ml-1">Admin will send earnings directly to this UPI.</p>
+                   <p className="text-[10px] text-slate-400 font-medium mt-1.5 ml-1">Admin will send earnings directly to this UPI.</p>
                  </div>
 
                  {/* Bio */}
                  <div>
                    <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">About Me (Bio)</label>
-                   <div className="relative">
+                   <div className="relative shadow-sm rounded-xl">
                       <FileText size={16} className="absolute left-3 top-3.5 text-slate-400" />
                       <textarea 
                         value={doctorProfile.bio} 
                         onChange={e => setDoctorProfile({...doctorProfile, bio: e.target.value})} 
-                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-4 py-3 text-sm outline-none focus:border-teal-500 text-slate-900 dark:text-white transition-colors min-h-[100px] resize-none" 
+                        className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-teal-500/50 text-slate-900 dark:text-white transition-colors min-h-[100px] resize-none" 
                         placeholder="Brief description of your expertise..."
                       />
                    </div>
@@ -286,7 +288,7 @@ export default function DoctorDashboard({ user, logout, showToast }) {
              </div>
 
              {/* Slots */}
-             <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+             <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
                <label className="text-xs font-bold text-slate-500 uppercase mb-4 flex justify-between items-end border-b border-slate-100 dark:border-slate-800 pb-2">
                  Manage Availability
                  <span className="text-[10px] bg-teal-100 text-teal-700 dark:bg-teal-500/20 dark:text-teal-400 px-2 py-0.5 rounded font-bold">
@@ -300,19 +302,19 @@ export default function DoctorDashboard({ user, logout, showToast }) {
                           <button 
                             key={slot} 
                             onClick={() => toggleSlot(slot)} 
-                            className={`py-3 text-xs font-bold rounded-xl border transition-all ${isSelected ? 'bg-teal-600 border-teal-600 text-white shadow-md shadow-teal-500/30' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-teal-500'}`}
+                            className={`py-3 text-xs font-bold rounded-xl border transition-all ${isSelected ? 'bg-gradient-to-r from-teal-500 to-cyan-600 border-none text-white shadow-md shadow-teal-500/30' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-teal-500'}`}
                           >
                              {slot}
                           </button>
                       )
                   })}
                </div>
-               <p className="text-[10px] text-slate-400 mt-3 text-center">Tap times to toggle them on or off for patients.</p>
+               <p className="text-[10px] text-slate-400 font-medium mt-3 text-center">Tap times to toggle them on or off for patients.</p>
              </div>
           </div>
           
           <div className="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shrink-0 pb-safe">
-             <Button onClick={handleSaveProfile} disabled={isSavingProfile} className="w-full py-4 text-sm font-bold flex items-center justify-center gap-2">
+             <Button onClick={handleSaveProfile} disabled={isSavingProfile} className="w-full py-4 text-sm font-bold flex items-center justify-center gap-2 bg-gradient-to-r from-teal-500 to-cyan-600 border-none shadow-xl hover:scale-[1.02] transition-transform">
                {isSavingProfile ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />} 
                {isSavingProfile ? 'Saving Changes...' : 'Save Profile Settings'}
              </Button>
@@ -322,8 +324,8 @@ export default function DoctorDashboard({ user, logout, showToast }) {
 
 
       {/* PREMIUM VIBRANT HEADER */}
-      <div className="w-full max-w-md bg-gradient-to-br from-teal-500 via-emerald-600 to-teal-900 rounded-b-[2.5rem] pt-12 pb-24 px-6 shadow-2xl relative overflow-hidden shrink-0">
-        <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 pointer-events-none"></div>
+      <div className="w-full max-w-md bg-gradient-to-br from-teal-500 via-emerald-500 to-cyan-600 rounded-b-[2.5rem] pt-12 pb-24 px-6 shadow-[0_10px_40px_-10px_rgba(13,148,136,0.5)] relative overflow-hidden shrink-0">
+        <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-[0.05] pointer-events-none"></div>
         <div className="absolute top-[-20%] right-[-10%] w-64 h-64 bg-white/20 blur-[60px] rounded-full pointer-events-none"></div>
         
         <div className="flex justify-between items-start relative z-10 text-white mb-6">
@@ -337,15 +339,15 @@ export default function DoctorDashboard({ user, logout, showToast }) {
                 )}
              </div>
              <div>
-                <p className="text-teal-100 text-xs font-bold uppercase tracking-wider mb-1">{greeting},</p>
-                <h1 className="text-2xl font-bold tracking-tight drop-shadow-md">{displayName}</h1>
+                <p className="text-teal-50 text-xs font-bold uppercase tracking-wider mb-1 opacity-90">{greeting},</p>
+                <h1 className="text-2xl font-black tracking-tight drop-shadow-md">{displayName}</h1>
              </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setIsEditingProfile(true)} className="p-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full hover:bg-white/30 transition-all text-white shadow-lg">
+            <button onClick={() => setIsEditingProfile(true)} className="p-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full hover:bg-white/30 transition-all text-white shadow-lg hover:scale-105">
               <Settings size={18} />
             </button>
-            <button onClick={logout} className="p-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full hover:bg-red-500/80 transition-all text-white shadow-lg">
+            <button onClick={logout} className="p-3 bg-red-500/80 backdrop-blur-sm border border-red-400/50 rounded-full hover:bg-red-600 transition-all text-white shadow-lg hover:scale-105">
               <LogOut size={18} />
             </button>
           </div>
@@ -357,15 +359,15 @@ export default function DoctorDashboard({ user, logout, showToast }) {
         {/* FLOATING QUICK STATS */}
         <div className="grid grid-cols-3 gap-3">
            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 flex flex-col items-center justify-center text-center">
-              <div className="text-2xl font-bold text-slate-800 dark:text-white mb-1">{todayCount}</div>
+              <div className="text-2xl font-black text-slate-800 dark:text-white mb-1">{todayCount}</div>
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Today</div>
            </div>
-           <div className="bg-gradient-to-b from-amber-400 to-orange-500 p-4 rounded-2xl shadow-xl shadow-amber-500/30 border border-amber-400 flex flex-col items-center justify-center text-center transform hover:-translate-y-1 transition-transform">
-              <div className="text-2xl font-bold text-white mb-1">{pendingRequests.length}</div>
-              <div className="text-[10px] font-bold text-amber-100 uppercase tracking-wider">Pending</div>
+           <div className="bg-gradient-to-br from-amber-400 to-orange-500 p-4 rounded-2xl shadow-xl shadow-amber-500/40 border border-amber-300 flex flex-col items-center justify-center text-center transform hover:-translate-y-1 transition-transform cursor-pointer">
+              <div className="text-2xl font-black text-white mb-1">{pendingRequests.length}</div>
+              <div className="text-[10px] font-bold text-amber-50 uppercase tracking-wider">Pending</div>
            </div>
            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 flex flex-col items-center justify-center text-center">
-              <div className="text-2xl font-bold text-slate-800 dark:text-white mb-1">{upcomingAppointments.length}</div>
+              <div className="text-2xl font-black text-slate-800 dark:text-white mb-1">{upcomingAppointments.length}</div>
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total</div>
            </div>
         </div>
@@ -374,21 +376,21 @@ export default function DoctorDashboard({ user, logout, showToast }) {
         {pendingRequests.length > 0 && (
             <div className="animate-in slide-in-from-bottom-4 duration-500">
                 <div className="flex items-center justify-between mb-3 px-1">
-                    <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                    <h2 className="text-sm font-black text-slate-800 dark:text-slate-200 flex items-center gap-2 tracking-tight">
                         <Activity size={16} className="text-amber-500" /> Action Required
                     </h2>
-                    <span className="bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 text-[10px] font-bold px-2 py-1 rounded-full">{pendingRequests.length} New</span>
+                    <span className="bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 text-[10px] font-bold px-2 py-1 rounded-md shadow-sm">{pendingRequests.length} New</span>
                 </div>
                 
                 <div className="space-y-3">
                   {pendingRequests.map(apt => (
-                    <div key={apt.id} className="bg-white dark:bg-slate-900 p-1 rounded-3xl shadow-lg shadow-amber-500/5 dark:shadow-none border border-amber-200/50 dark:border-amber-500/20 relative overflow-hidden group">
-                      <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-amber-400 to-orange-500 rounded-l-3xl"></div>
+                    <div key={apt.id} className="bg-white dark:bg-slate-900 p-1 rounded-2xl shadow-lg shadow-slate-200/50 dark:shadow-none border border-amber-200/50 dark:border-amber-500/20 relative overflow-hidden group">
+                      <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-amber-400 to-orange-500"></div>
                       
                       <div className="p-4 pl-5">
                           <div className="flex justify-between items-start mb-4">
                             <div className="flex items-center gap-3">
-                                <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 flex items-center justify-center font-black text-sm border-2 border-amber-200">
+                                <div className="w-12 h-12 rounded-full bg-amber-50 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center font-black text-sm border border-amber-100 shadow-sm">
                                     {getInitials(apt.patient_name)}
                                 </div>
                                 <div>
@@ -398,16 +400,16 @@ export default function DoctorDashboard({ user, logout, showToast }) {
                                     </p>
                                 </div>
                             </div>
-                            <div className="bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold inline-flex items-center gap-1">
+                            <div className="bg-slate-50 dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-100 dark:border-slate-700 text-xs font-bold inline-flex items-center gap-1">
                                 <Clock size={12} className="text-teal-500"/> {apt.slot}
                             </div>
                           </div>
                           
                           <div className="flex gap-2">
-                            <button onClick={() => handleAction(apt.id, 'reject')} className="flex-1 bg-slate-100 dark:bg-slate-800 hover:bg-red-50 dark:hover:bg-red-500/10 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1 border border-slate-200 dark:border-slate-700">
+                            <button onClick={() => handleAction(apt.id, 'reject')} className="flex-1 bg-slate-50 dark:bg-slate-800 hover:bg-red-50 dark:hover:bg-red-500/10 text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1 border border-slate-100 dark:border-slate-700">
                                 <X size={16} /> Reject
                             </button>
-                            <button onClick={() => handleAction(apt.id, 'accept')} className="flex-[2] bg-teal-600 hover:bg-teal-700 text-white shadow-lg shadow-teal-600/30 transition-all py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1">
+                            <button onClick={() => handleAction(apt.id, 'accept')} className="flex-[2] bg-gradient-to-r from-teal-500 to-cyan-600 text-white shadow-lg shadow-teal-500/30 hover:scale-[1.02] transition-transform py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1 border-none">
                                 <Check size={16} /> Accept Request
                             </button>
                           </div>
@@ -421,7 +423,7 @@ export default function DoctorDashboard({ user, logout, showToast }) {
         {/* UPCOMING SCHEDULE SECTION */}
         <div className="pb-32">
             <div className="flex items-center justify-between mb-4 px-1 mt-4">
-                <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                <h2 className="text-sm font-black text-slate-800 dark:text-slate-200 flex items-center gap-2 tracking-tight">
                     <Calendar size={16} className="text-teal-500" /> Upcoming Schedule
                 </h2>
             </div>
@@ -433,7 +435,7 @@ export default function DoctorDashboard({ user, logout, showToast }) {
                     <Calendar size={24} className="text-slate-300 dark:text-slate-600" />
                   </div>
                   <p className="text-slate-500 dark:text-slate-400 font-bold text-sm">Your schedule is clear.</p>
-                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Confirmed appointments will appear here.</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 font-medium">Confirmed appointments will appear here.</p>
                 </div>
               ) : (
                 upcomingAppointments.map(apt => {
@@ -444,35 +446,35 @@ export default function DoctorDashboard({ user, logout, showToast }) {
                   let badgeText = "Confirmed";
                   
                   if (isAwaitingPayment) {
-                      badgeStyles = "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 border-blue-200 dark:border-blue-500/20";
+                      badgeStyles = "bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400 border-blue-200 dark:border-blue-500/20";
                       badgeText = "Awaiting Payment";
                   } else if (isCash) {
-                      badgeStyles = "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20";
+                      badgeStyles = "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20";
                       badgeText = "Cash Collection";
                   }
 
                   return (
-                    <div key={apt.id} className="bg-white dark:bg-slate-900 p-4 rounded-3xl shadow-md shadow-slate-200/30 border border-slate-100 dark:border-slate-800 hover:border-teal-200 dark:hover:border-teal-900/50 transition-colors flex flex-col gap-3 group">
+                    <div key={apt.id} className="bg-white dark:bg-slate-900 p-4 rounded-2xl shadow-[0_2px_15px_-3px_rgba(6,81,237,0.1)] border border-slate-100 dark:border-slate-800 hover:border-teal-200 dark:hover:border-teal-900/50 transition-colors flex flex-col gap-3 group">
                       
                       <div className="flex justify-between items-start">
                         <div className="flex gap-4 items-center">
-                            <div className="w-14 h-14 rounded-2xl bg-teal-50 dark:bg-slate-800 border border-teal-100 dark:border-slate-700 flex flex-col items-center justify-center text-teal-700 dark:text-teal-400 shrink-0">
+                            <div className="w-14 h-14 rounded-xl bg-teal-50 dark:bg-slate-800 border border-teal-100 dark:border-slate-700 flex flex-col items-center justify-center text-teal-700 dark:text-teal-400 shrink-0 shadow-sm">
                                 <span className="text-[10px] font-bold uppercase leading-none mb-1 opacity-70">{new Date(apt.appointment_date).toLocaleDateString('en-US', { month: 'short' })}</span>
                                 <span className="text-xl font-black leading-none">{new Date(apt.appointment_date).getDate()}</span>
                             </div>
                             <div>
                                 <h3 className="font-bold text-slate-900 dark:text-white text-base group-hover:text-teal-600 transition-colors">{apt.patient_name}</h3>
-                                <div className="inline-flex items-center gap-1.5 mt-1 text-xs font-bold text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded-md">
+                                <div className="inline-flex items-center gap-1.5 mt-1 text-xs font-bold text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded-md border border-slate-100 dark:border-slate-700">
                                     <Clock size={12} className="text-teal-500" /> {apt.slot}
                                 </div>
                             </div>
                         </div>
                         
                         <div className="flex flex-col items-end gap-2">
-                            <span className={`text-[9px] uppercase font-black px-3 py-1.5 rounded-full border tracking-wide ${badgeStyles}`}>
+                            <span className={`text-[9px] uppercase font-black px-2.5 py-1 rounded-md shadow-sm border tracking-wide ${badgeStyles}`}>
                                 {badgeText}
                             </span>
-                            {isCash && <span className="text-[10px] font-bold text-amber-500 bg-amber-50 px-2 py-1 rounded">Collect ₹{apt.amount?.replace(/\D/g,'') || 0}</span>}
+                            {isCash && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded shadow-sm border border-amber-100">Collect ₹{apt.amount?.replace(/\D/g,'') || 0}</span>}
                         </div>
                       </div>
                       

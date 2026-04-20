@@ -8,7 +8,7 @@ import DashboardView from './components/views/Dashboard';
 import DoctorDashboard from './components/views/DoctorDashboard';
 import AdminDashboard from './components/views/AdminDashboard';
 import ProfileView from './components/views/Profile';
-import { CheckCircle, Zap, Search, Calendar, User, LogOut, ShieldCheck, X, AlertCircle, Settings, Sun, Moon, Type, Bell } from 'lucide-react';
+import { CheckCircle, Zap, Search, Calendar, User, LogOut, ShieldCheck, X, AlertCircle, Settings, Sun, Moon, Type, Bell, Menu } from 'lucide-react';
 import Button from './components/ui/Button';
 
 const ADMIN_UPI_HANDLE = import.meta.env.VITE_ADMIN_UPI_HANDLE;
@@ -87,7 +87,7 @@ const Toast = ({ notification, onClose }) => {
   }
 
   return (
-    <div className={`fixed top-4 left-4 right-4 z-50 px-4 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-top-4 duration-300 ${bgColor}`}>
+    <div className={`fixed top-4 left-4 right-4 z-[999] px-4 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-top-4 duration-300 ${bgColor}`}>
       <Icon size={20} className={`${iconColor} shrink-0`} />
       <p className="font-semibold text-sm flex-1">{notification.message}</p>
       <button onClick={onClose} className="ml-2 opacity-70 hover:opacity-100 p-1 bg-black/10 rounded-full"><X size={16} /></button>
@@ -140,15 +140,15 @@ const PaymentModal = ({ appointment, onClose, onConfirm }) => {
 
 const SuccessView = ({ setView }) => (
   <div className="h-full flex flex-col items-center justify-center text-center p-8 animate-in zoom-in">
-    <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mb-6 text-blue-600">
-      <Calendar size={48} />
+    <div className="w-24 h-24 bg-teal-100 rounded-full flex items-center justify-center mb-6 text-teal-600 shadow-xl shadow-teal-500/20">
+      <CheckCircle size={48} />
     </div>
     <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Request Sent!</h1>
     <p className="text-slate-500 dark:text-slate-400 mb-8">
       Your booking request has been sent to the doctor. You will be notified once they approve it.
     </p>
-    <div className="space-y-3 w-full">
-      <Button onClick={() => setView('dashboard')} className="w-full">Check Status</Button>
+    <div className="space-y-3 w-full max-w-xs mx-auto">
+      <Button onClick={() => setView('dashboard')} className="w-full bg-teal-600 hover:bg-teal-700 text-white">Check Status</Button>
       <Button onClick={() => setView('home')} variant="ghost" className="w-full">Back to Home</Button>
     </div>
   </div>
@@ -167,6 +167,7 @@ export default function App() {
   
   const [notification, setNotification] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // NEW SIDEBAR STATE
   const [appSettings, setAppSettings] = useState({ theme: 'light', largeText: false });
   
   const [payingAppt, setPayingAppt] = useState(null);
@@ -188,7 +189,6 @@ export default function App() {
 
   const showToast = useCallback((message, type = 'success') => {
     setNotification({ message, type });
-    // Keep info notifications slightly longer to read
     const duration = type === 'info' ? 6000 : 4000;
     setTimeout(() => setNotification(null), duration);
   }, []);
@@ -200,35 +200,65 @@ export default function App() {
     }
   }, [user]);
 
+  // --- NATIVE PUSH NOTIFICATIONS (FIXED TO USE WINDOW.CAPACITOR) ---
+  useEffect(() => {
+    if (!user) return;
+
+    const setupPushNotifications = async () => {
+      try {
+        const cap = window.Capacitor;
+        if (cap && cap.isNativePlatform() && cap.Plugins.PushNotifications) {
+          const PushNotifications = cap.Plugins.PushNotifications;
+          
+          let permStatus = await PushNotifications.checkPermissions();
+          if (permStatus.receive === 'prompt') {
+            permStatus = await PushNotifications.requestPermissions();
+          }
+
+          if (permStatus.receive === 'granted') {
+            await PushNotifications.register();
+
+            PushNotifications.addListener('registration', async (token) => {
+              await supabase.from('users').update({ push_token: token.value }).eq('id', user.id);
+              if (user.role === 'doctor' && user.doctorId) {
+                await supabase.from('doctors').update({ push_token: token.value }).eq('id', user.doctorId);
+              }
+            });
+
+            PushNotifications.addListener('pushNotificationReceived', (notification) => {
+              showToast(`🔔 ${notification.title}: ${notification.body}`, 'info');
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Push Notification setup failed:', error);
+      }
+    };
+
+    setupPushNotifications();
+  }, [user, showToast]);
+
   // --- SUPABASE REALTIME NOTIFICATIONS ---
   useEffect(() => {
     if (!user) return;
 
-    // Create a unique channel for notifications
     const notificationChannel = supabase.channel('realtime_appointments');
 
-    // 1. Listen for NEW Bookings (Fires for Doctors & Admins)
     notificationChannel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'appointments' }, (payload) => {
       const newAppt = payload.new;
-      
-      // Notify Admin
       if (user.role === 'admin') {
         showToast(`New booking request: ${newAppt.patient_name} -> Dr. ${newAppt.doctor_name}`, 'info');
-      } 
-      // Notify Specific Doctor
-      else if (user.role === 'doctor' && user.doctorId === newAppt.doctor_id) {
+      } else if (user.role === 'doctor' && user.doctorId === newAppt.doctor_id) {
         showToast(`🔔 New appointment request from ${newAppt.patient_name}!`, 'info');
       }
     });
 
-    // 2. Listen for UPDATES (Fires for Patients when Dr. Accepts/Rejects)
     notificationChannel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'appointments' }, (payload) => {
       const updatedAppt = payload.new;
-      
       if (user.role === 'patient' && user.name === updatedAppt.patient_name) {
          if (updatedAppt.status === 'Accepted') {
             showToast(`Good news! Dr. ${updatedAppt.doctor_name} accepted your request. Please pay to confirm.`, 'info');
-            fetchMyVisits(); // Auto refresh their dashboard
+            fetchMyVisits();
          } else if (updatedAppt.status === 'Cancelled by Doctor') {
             showToast(`Dr. ${updatedAppt.doctor_name} rejected your booking request.`, 'error');
             fetchMyVisits();
@@ -239,15 +269,9 @@ export default function App() {
       }
     });
 
-    // Subscribe to the channel
     notificationChannel.subscribe();
-
-    // Cleanup on unmount or user change
-    return () => {
-      supabase.removeChannel(notificationChannel);
-    };
-  }, [user, showToast, fetchMyVisits]); // Re-run if user or dependencies change
-
+    return () => supabase.removeChannel(notificationChannel);
+  }, [user, showToast, fetchMyVisits]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -257,12 +281,9 @@ export default function App() {
     else root.style.fontSize = '16px';
   }, [appSettings]);
 
-
   const handleLogin = (userData, rememberMe = true) => {
     setUser(userData);
-    if (rememberMe) {
-      localStorage.setItem('raphal_user_session', JSON.stringify(userData));
-    }
+    if (rememberMe) localStorage.setItem('raphal_user_session', JSON.stringify(userData));
     setView('home'); 
     showToast(`Welcome back, ${userData.name}!`);
   };
@@ -279,7 +300,6 @@ export default function App() {
     if (!user) return; 
     setView(targetView);
   }, [user]);
-
 
   useEffect(() => {
     (async () => {
@@ -298,11 +318,9 @@ export default function App() {
     fetchDoctors();
   }, []); 
 
-  // --- NEW BOOKING LOGIC (NO INSTANT PAYMENT) ---
   const initiateBooking = async () => {
     if (!selectedSlot || !selectedDoctor) return;
 
-    // Check if slot taken
     const { data: existing } = await supabase.from('appointments').select('*')
       .eq('doctor_id', selectedDoctor.id).eq('slot', selectedSlot)
       .neq('status', 'Cancelled by Doctor').neq('status', 'Cancelled');
@@ -331,14 +349,10 @@ export default function App() {
     if (user.id && typeof user.id === 'string' && uuidRegex.test(user.id)) bookingPayload.patient_id = user.id;
 
     const { error } = await supabase.from('appointments').insert(bookingPayload);
-    if (error) {
-      showToast("Booking request failed: " + error.message, "error");
-    } else {
-      secureNavigate('success');
-    }
+    if (error) showToast("Booking request failed: " + error.message, "error");
+    else secureNavigate('success');
   };
 
-  // --- PAYMENT SUBMISSION ---
   const handleSubmitPayment = async (appointment, txnId) => {
     const { error } = await supabase.from('appointments').update({
         status: "Payment Verifying",
@@ -354,7 +368,6 @@ export default function App() {
     }
   };
 
-  // --- CASH FALLBACK LOGIC ---
   const handlePayCash = async (appointment) => {
     if(window.confirm("Do you want to confirm this booking and pay via Cash at the clinic?")) {
         const { error } = await supabase.from('appointments').update({
@@ -391,31 +404,6 @@ export default function App() {
   const renderSettings = showSettings && <SettingsModal onClose={() => setShowSettings(false)} settings={appSettings} setSettings={setAppSettings} />;
   const themeClass = appSettings.theme === 'dark' ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-900';
 
-  if (view === 'profile') {
-    return (
-      <>
-        <SEO title="My Profile | Rapha'l" description="Manage your profile" />
-        <Toast notification={notification} onClose={() => setNotification(null)} />
-        {renderSettings}
-        <div className={`min-h-screen ${themeClass} pb-20 md:pb-0 transition-colors duration-300`}> 
-            <div className={`w-full md:max-w-md mx-auto relative shadow-none md:shadow-2xl min-h-screen ${appSettings.theme === 'dark' ? 'bg-slate-800' : 'bg-white'}`}> 
-                <div className="absolute top-4 right-4 z-20"><button onClick={() => setShowSettings(true)} className="p-2 bg-slate-100 dark:bg-slate-700 rounded-full text-slate-600 dark:text-slate-300"><Settings size={20}/></button></div>
-                <ProfileView user={user} logout={handleLogout} showToast={showToast} />
-                {user.role === 'patient' && (
-                    <div className="bg-white/80 dark:bg-slate-900/90 backdrop-blur-lg border-t border-slate-200 dark:border-slate-700 p-4 flex justify-around items-center z-40 fixed bottom-0 left-0 right-0 w-full md:absolute md:w-full">
-                        <button onClick={() => secureNavigate('home')} className="flex flex-col items-center gap-1 text-slate-400"><Zap size={24} /><span className="text-[10px] font-bold">Discover</span></button>
-                        <button onClick={() => secureNavigate('search')} className="flex flex-col items-center gap-1 text-slate-400"><Search size={24} /><span className="text-[10px] font-bold">Find</span></button>
-                        <button onClick={() => secureNavigate('dashboard')} className="flex flex-col items-center gap-1 text-slate-400"><Calendar size={24} /><span className="text-[10px] font-bold">Visits</span></button>
-                        <button onClick={() => secureNavigate('profile')} className="flex flex-col items-center gap-1 text-teal-600"><User size={24} className="fill-current" /><span className="text-[10px] font-bold">Profile</span></button>
-                    </div>
-                )}
-                {user.role === 'doctor' && <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-slate-100 flex justify-center w-full z-50"><Button onClick={() => secureNavigate('home')}>Back</Button></div>}
-            </div>
-        </div>
-      </>
-    );
-  }
-  
   if (user.role === 'doctor') {
     return (
         <>
@@ -438,6 +426,7 @@ export default function App() {
     );
   }
 
+  // --- PATIENT UI ---
   return (
     <>
         <SEO title="Rapha'l Health" description="Book doctors in Nagaland" />
@@ -448,31 +437,73 @@ export default function App() {
             <PaymentModal appointment={payingAppt} onClose={() => setPayingAppt(null)} onConfirm={handleSubmitPayment} />
         )}
 
-        <div className={`min-h-screen ${themeClass} pb-20 md:pb-0 transition-colors duration-300`}>
-        <div className={`w-full md:max-w-md mx-auto min-h-screen relative shadow-none md:shadow-2xl overflow-hidden flex flex-col ${appSettings.theme === 'dark' ? 'bg-slate-800' : 'bg-white'}`}>
-            <div className="bg-slate-900 text-[10px] text-slate-500 py-2 px-4 flex justify-between items-center sticky top-0 z-30">
-                <span className="flex items-center gap-1"><ShieldCheck size={12} className="text-teal-500"/> RAPHA'L v14.0 <span className="ml-2 bg-teal-500/20 text-teal-400 px-2 rounded-full flex items-center gap-1"><Bell size={8}/> Realtime Active</span></span>
-                <button onClick={() => setShowSettings(true)} className="text-slate-400 hover:text-white"><Settings size={14}/></button>
-            </div>
-            <div className="flex-1 overflow-y-auto scrollbar-hide">
-            {view === 'home' && <HomeView setView={secureNavigate} setSearchQuery={setSearchQuery} doctors={doctors} setSelectedDoctor={setSelectedDoctor} />}
-            {view === 'search' && <SearchView searchQuery={searchQuery} setSearchQuery={setSearchQuery} doctors={doctors} setView={secureNavigate} setSelectedDoctor={setSelectedDoctor} activeCategory={activeCategory} setActiveCategory={setActiveCategory} />}
-            {view === 'detail' && <DoctorDetailView doctor={selectedDoctor} setView={secureNavigate} selectedSlot={selectedSlot} setSelectedSlot={setSelectedSlot} selectedDate={selectedDate} setSelectedDate={setSelectedDate} handleBook={initiateBooking} />}
-            
-            {/* Pass Handlers to Dashboard */}
-            {view === 'dashboard' && <DashboardView appointments={appointments} onPayNow={setPayingAppt} onPayCash={handlePayCash} />}
-            
-            {view === 'success' && <SuccessView setView={secureNavigate} />}
-            </div>
-            {!['detail', 'success'].includes(view) && (
-            <div className="bg-white/95 dark:bg-slate-900/90 backdrop-blur-md border-t border-slate-200 dark:border-slate-700 p-3 flex justify-around items-center z-50 fixed bottom-0 left-0 right-0 w-full md:absolute md:w-full">
-                <button onClick={() => secureNavigate('home')} className={`flex flex-col items-center gap-1 transition-colors ${view === 'home' ? 'text-teal-600' : 'text-slate-400'}`}><Zap size={24} className={view === 'home' ? 'fill-current' : ''} /><span className="text-[10px] font-bold">Discover</span></button>
-                <button onClick={() => secureNavigate('search')} className={`flex flex-col items-center gap-1 transition-colors ${view === 'search' ? 'text-teal-600' : 'text-slate-400'}`}><Search size={24} className={view === 'search' ? 'fill-current' : ''} /><span className="text-[10px] font-bold">Find</span></button>
-                <button onClick={() => secureNavigate('dashboard')} className={`flex flex-col items-center gap-1 transition-colors ${view === 'dashboard' ? 'text-teal-600' : 'text-slate-400'}`}><Calendar size={24} className={view === 'dashboard' ? 'fill-current' : ''} /><span className="text-[10px] font-bold">Visits</span></button>
-                <button onClick={() => secureNavigate('profile')} className={`flex flex-col items-center gap-1 transition-colors ${view === 'profile' ? 'text-teal-600' : 'text-slate-400'}`}><User size={24} className={view === 'profile' ? 'fill-current' : ''} /><span className="text-[10px] font-bold">Profile</span></button>
-            </div>
-            )}
-        </div>
+        <div className={`min-h-screen ${themeClass} transition-colors duration-300 bg-gradient-to-br from-slate-50 to-teal-50/30 dark:from-slate-900 dark:to-slate-800`}>
+          
+          {/* VIBRANT TOP APP BAR */}
+          <div className="w-full md:max-w-md mx-auto sticky top-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-800/50 shadow-sm px-4 py-3 flex justify-between items-center">
+             <div className="flex items-center gap-3">
+                 <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-2 rounded-full text-slate-600 dark:text-slate-300 hover:bg-teal-50 dark:hover:bg-slate-800 transition-colors">
+                     <Menu size={24} />
+                 </button>
+                 <span className="font-extrabold text-lg text-transparent bg-clip-text bg-gradient-to-r from-teal-600 to-cyan-600 tracking-tight">RAPHA'L</span>
+             </div>
+             <div className="flex items-center gap-3">
+                 <span className="hidden sm:flex bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 px-2.5 py-1 rounded-full text-[10px] font-bold items-center gap-1 border border-teal-100 dark:border-teal-800/50 shadow-sm"><Bell size={10}/> Realtime</span>
+                 <button onClick={() => setShowSettings(true)} className="p-2 -mr-2 text-slate-400 hover:text-teal-600 hover:bg-teal-50 dark:hover:bg-slate-800 rounded-full transition-colors"><Settings size={20}/></button>
+             </div>
+          </div>
+
+          {/* SLIDING SIDEBAR MENU */}
+          {isSidebarOpen && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 animate-in fade-in" onClick={() => setIsSidebarOpen(false)} />
+          )}
+          
+          <div className={`fixed top-0 left-0 h-full w-72 bg-white dark:bg-slate-900 z-50 transform transition-transform duration-300 shadow-2xl flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+             <div className="bg-gradient-to-br from-teal-500 via-emerald-500 to-cyan-600 p-6 text-white shadow-inner relative overflow-hidden">
+                <div className="absolute top-[-20%] right-[-10%] w-32 h-32 bg-white/20 blur-[30px] rounded-full"></div>
+                <div className="relative z-10">
+                    <h2 className="text-2xl font-black mb-1">Rapha'l</h2>
+                    <p className="text-teal-50 text-sm font-medium flex items-center gap-2"><User size={14}/> {user?.name}</p>
+                </div>
+                <button onClick={() => setIsSidebarOpen(false)} className="absolute top-4 right-4 p-2 bg-white/10 rounded-full hover:bg-white/20 text-white"><X size={18}/></button>
+             </div>
+             
+             <div className="flex-1 p-4 space-y-1 overflow-y-auto">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-3 mb-2 mt-2">Menu</p>
+                <button onClick={() => { secureNavigate('home'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-4 p-3.5 rounded-xl font-bold transition-all ${view === 'home' ? 'bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+                    <Zap size={20} className={view === 'home' ? 'text-teal-600' : 'text-slate-400'} /> Discover
+                </button>
+                <button onClick={() => { secureNavigate('search'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-4 p-3.5 rounded-xl font-bold transition-all ${view === 'search' ? 'bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+                    <Search size={20} className={view === 'search' ? 'text-teal-600' : 'text-slate-400'} /> Find Doctors
+                </button>
+                <button onClick={() => { secureNavigate('dashboard'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-4 p-3.5 rounded-xl font-bold transition-all ${view === 'dashboard' ? 'bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+                    <Calendar size={20} className={view === 'dashboard' ? 'text-teal-600' : 'text-slate-400'} /> My Visits
+                </button>
+                
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-3 mb-2 mt-6">Account</p>
+                <button onClick={() => { secureNavigate('profile'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-4 p-3.5 rounded-xl font-bold transition-all ${view === 'profile' ? 'bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+                    <User size={20} className={view === 'profile' ? 'text-teal-600' : 'text-slate-400'} /> Profile Settings
+                </button>
+             </div>
+             
+             <div className="p-4 border-t border-slate-100 dark:border-slate-800 pb-safe">
+                <button onClick={handleLogout} className="w-full flex items-center gap-4 p-3.5 rounded-xl text-red-600 dark:text-red-400 font-bold hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">
+                    <LogOut size={20} /> Logout
+                </button>
+             </div>
+          </div>
+
+          {/* MAIN CONTENT AREA */}
+          <div className={`w-full md:max-w-md mx-auto min-h-[calc(100vh-60px)] relative shadow-none md:shadow-2xl overflow-hidden flex flex-col ${appSettings.theme === 'dark' ? 'bg-slate-900' : 'bg-white'}`}>
+              <div className="flex-1 overflow-y-auto scrollbar-hide flex flex-col">
+                  {view === 'home' && <HomeView setView={secureNavigate} setSearchQuery={setSearchQuery} doctors={doctors} setSelectedDoctor={setSelectedDoctor} />}
+                  {view === 'search' && <SearchView searchQuery={searchQuery} setSearchQuery={setSearchQuery} doctors={doctors} setView={secureNavigate} setSelectedDoctor={setSelectedDoctor} activeCategory={activeCategory} setActiveCategory={setActiveCategory} />}
+                  {view === 'detail' && <DoctorDetailView doctor={selectedDoctor} setView={secureNavigate} selectedSlot={selectedSlot} setSelectedSlot={setSelectedSlot} selectedDate={selectedDate} setSelectedDate={setSelectedDate} handleBook={initiateBooking} />}
+                  {view === 'dashboard' && <DashboardView appointments={appointments} onPayNow={setPayingAppt} onPayCash={handlePayCash} />}
+                  {view === 'profile' && <ProfileView user={user} logout={handleLogout} showToast={showToast} />}
+                  {view === 'success' && <SuccessView setView={secureNavigate} />}
+              </div>
+          </div>
         </div>
     </>
   );
