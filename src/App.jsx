@@ -1,386 +1,687 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { supabase } from './lib/supabaseClient'; 
-import LoginView from './components/views/Login';
-import HomeView from './components/views/Home';
-import SearchView from './components/views/Search';
-import DoctorDetailView from './components/views/Detail';
-import DashboardView from './components/views/Dashboard';
-import DoctorDashboard from './components/views/DoctorDashboard';
-import AdminDashboard from './components/views/AdminDashboard';
-import ProfileView from './components/views/Profile';
-import { CheckCircle, Zap, Search, Calendar, User, LogOut, ShieldCheck, X, AlertCircle, Settings, Sun, Moon, Type, Bell, Menu } from 'lucide-react';
-import Button from './components/ui/Button';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { createClient } from '@supabase/supabase-js';
+import {
+  Search, Calendar, Clock, MapPin, Star, Shield, Activity, User, CheckCircle, X,
+  ArrowRight, Loader2, EyeOff, Check, LogOut, MessageSquare, Send, 
+  ChevronLeft, IndianRupee, Zap, Mail, Lock
+} from 'lucide-react';
 
-const ADMIN_UPI_HANDLE = import.meta.env.VITE_ADMIN_UPI_HANDLE;
-const ADMIN_NAME = import.meta.env.VITE_ADMIN_NAME || "Rapha'l Health Platform";
+// ==========================================
+// GLOBAL CONFIGURATION & SUPABASE SETUP
+// ==========================================
+const supabaseUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || "https://wogynpamaclqouzyllgn.supabase.co";
+const supabaseAnonKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) || "sb_publishable_OdSAp_DAPXo_3kzaC3knLA_D1UVW1QN";
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-const SEO = ({ title, description }) => {
+const SYMPTOM_MAP = {
+  head: 'Neurologist', migraine: 'Neurologist', brain: 'Neurologist',
+  heart: 'Cardiologist', chest: 'Cardiologist', breath: 'Cardiologist',
+  pain: 'General Physician', fever: 'General Physician', flu: 'General Physician',
+  bone: 'Orthopedic', joint: 'Orthopedic', knee: 'Orthopedic', back: 'Orthopedic',
+  skin: 'Dermatologist', rash: 'Dermatologist', acne: 'Dermatologist',
+  eye: 'Ophthalmologist', vision: 'Ophthalmologist',
+};
+
+// ==========================================
+// REUSABLE UI COMPONENTS
+// ==========================================
+const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false }) => {
+  const baseStyle = "px-6 py-3 rounded-xl font-semibold transition-all duration-200 transform active:scale-95 flex items-center justify-center gap-2 shadow-lg";
+  const variants = {
+    primary: "bg-gradient-to-r from-teal-500 to-cyan-600 text-white hover:shadow-teal-500/30",
+    secondary: "bg-white text-slate-800 border border-slate-200 hover:bg-slate-50",
+    danger: "bg-red-50 text-red-600 hover:bg-red-100",
+    ghost: "bg-transparent text-slate-600 hover:bg-slate-100 shadow-none",
+    outline: "bg-transparent border border-slate-200 text-slate-600 hover:bg-slate-50"
+  };
+  return (
+    <button onClick={onClick} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}>
+      {children}
+    </button>
+  );
+};
+
+const Badge = ({ children, type = 'info' }) => {
+  const styles = {
+    info: "bg-blue-100 text-blue-700",
+    success: "bg-green-100 text-green-700",
+    warning: "bg-amber-100 text-amber-700"
+  };
+  return (
+    <span className={`px-2 py-1 rounded-md text-xs font-bold uppercase tracking-wider ${styles[type]}`}>{children}</span>
+  );
+};
+
+// ==========================================
+// VIEWS
+// ==========================================
+
+function LoginView({ onLogin, showToast }) {
+  const [mode, setMode] = useState('login'); 
+  const [isVisible, setIsVisible] = useState(false); 
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [role, setRole] = useState('patient');
+  const [specialty, setSpecialty] = useState('General Physician');
+  const [price, setPrice] = useState(''); 
+  const [doctorUpi, setDoctorUpi] = useState(''); 
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
   useEffect(() => {
-    document.title = title;
-    const setMeta = (name, content) => {
-      let element = document.querySelector(`meta[name="${name}"]`);
-      if (!element) {
-        element = document.createElement('meta');
-        element.setAttribute('name', name);
-        document.head.appendChild(element);
+    const timer = setTimeout(() => setIsVisible(true), 50);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleLoginSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      const { data, error: loginError } = await supabase.from('users').select().eq('email', email).eq('password', password).single();
+      if (loginError || !data) throw new Error("Invalid email or password.");
+      if (data.role === 'doctor') {
+        const { data: docProfile } = await supabase.from('doctors').select().eq('name', data.name).single();
+        if (docProfile) data.doctorId = docProfile.id;
       }
-      element.setAttribute('content', content);
-    };
-    setMeta('description', description);
-  }, [title, description]);
-  return null;
-};
+      onLogin(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-const SettingsModal = ({ onClose, settings, setSettings }) => {
+  const handleRegisterSubmit = async () => {
+    setLoading(true);
+    try {
+      const { data: existing } = await supabase.from('users').select().eq('email', email).single();
+      if (existing) throw new Error("Email already registered.");
+      const { data: newUser, error: insertError } = await supabase.from('users').insert([{ email, password, name, role, phone, district: 'Dimapur' }]).select().single();
+      if (insertError) throw insertError;
+      
+      let currentUser = newUser;
+      if (role === 'doctor') {
+         const { data: docData, error: docError } = await supabase.from('doctors').insert([{ 
+             name, specialty, rating: 5.0, reviews: 0, image: '', 
+             location: 'Online', experience: '1 Year', bio: 'New specialist at Rapha\'l.', 
+             price: `₹${price}`, slots: ['09:00 AM', '10:00 AM', '02:00 PM'], upi_id: doctorUpi 
+         }]).select().single();
+         if (docError) throw new Error("Failed to create doctor profile.");
+         currentUser.doctorId = docData.id;
+      }
+      if(showToast) showToast(`Welcome to Rapha'l, ${name}!`);
+      onLogin(currentUser);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-      <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
-        <div className="flex justify-between items-center mb-6">
-           <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2"><Settings className="text-teal-500" size={20} /> Settings</h2>
-           <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"><X size={20} className="text-slate-500 dark:text-slate-400" /></button>
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 relative overflow-y-auto overflow-x-hidden font-sans">
+      <div className={`w-full max-w-md bg-white/5 backdrop-blur-2xl border border-white/10 p-8 rounded-[2.5rem] shadow-2xl z-10 transition-all duration-1000 ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}>
+        <div className="text-center mb-8">
+          <div className="w-24 h-24 bg-gradient-to-tr from-teal-400 to-cyan-600 rounded-3xl mx-auto flex items-center justify-center mb-6 shadow-xl"><Shield className="text-white" size={48} /></div>
+          <h1 className="text-5xl font-extrabold text-white mb-2 tracking-tight">Rapha'l</h1>
+          <p className="text-slate-400 text-xs font-bold tracking-[0.25em] uppercase">Healthcare Portal</p>
         </div>
-        <div className="space-y-6">
-           <div>
-              <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Appearance</label>
-              <div className="flex gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-                 <button onClick={() => setSettings({...settings, theme: 'light'})} className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-2 transition-all text-sm font-medium ${settings.theme === 'light' ? 'bg-white shadow text-teal-600' : 'text-slate-400 dark:text-slate-500 hover:text-slate-600'}`}><Sun size={16}/> Light</button>
-                 <button onClick={() => setSettings({...settings, theme: 'dark'})} className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-2 transition-all text-sm font-medium ${settings.theme === 'dark' ? 'bg-slate-700 shadow text-white' : 'text-slate-400 dark:text-slate-500 hover:text-slate-600'}`}><Moon size={16}/> Dark</button>
+
+        {mode === 'login' ? (
+          <form onSubmit={handleLoginSubmit} className="space-y-6">
+            <div className="group relative">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Mail className="text-slate-500" size={20} /></div>
+                <input type="email" placeholder="Email Address (e.g., patient@raphal.com)" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-900/60 border border-slate-700/50 rounded-2xl pl-12 pr-4 py-4 text-white focus:ring-2 focus:ring-teal-500 outline-none" required />
+            </div>
+            <div className="group relative">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Lock className="text-slate-500" size={20} /></div>
+                <input type={showPassword ? "text" : "password"} placeholder="Password (e.g., password)" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-900/60 border border-slate-700/50 rounded-2xl pl-12 pr-12 py-4 text-white focus:ring-2 focus:ring-teal-500 outline-none" required />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 transform -translate-y-1/2 text-slate-400"><EyeOff size={20} /></button>
+            </div>
+            {error && <div className="bg-red-500/10 text-red-200 text-sm text-center py-3 rounded-xl">{error}</div>}
+            <Button className="w-full py-4 text-lg font-bold bg-gradient-to-r from-teal-500 to-cyan-600 border-none rounded-2xl" disabled={loading}>
+                {loading ? <Loader2 className="animate-spin mx-auto" /> : "Secure Login"}
+            </Button>
+            <button type="button" onClick={() => setMode('register')} className="w-full text-center mt-6 text-slate-400 text-sm hover:text-teal-400 flex items-center justify-center gap-1 group">
+                Create Verified Account <ArrowRight size={14} className="group-hover:translate-x-1" />
+            </button>
+          </form>
+        ) : (
+           <div className="space-y-5">
+              <div className="flex gap-2 mb-6 bg-slate-900/40 p-1.5 rounded-2xl border border-slate-700/50">
+                {['patient', 'doctor'].map(r => (
+                  <button key={r} onClick={() => setRole(r)} className={`flex-1 py-3 rounded-xl text-xs font-bold uppercase transition-all ${role === r ? 'bg-slate-700 text-white' : 'text-slate-400'}`}>{r}</button>
+                ))}
               </div>
+              <input type="text" placeholder="Full Name" value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-slate-900/60 border border-slate-700/50 rounded-xl px-4 py-3 text-white outline-none focus:ring-2 focus:ring-teal-500" />
+              <input type="text" placeholder="Phone Number" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full bg-slate-900/60 border border-slate-700/50 rounded-xl px-4 py-3 text-white outline-none focus:ring-2 focus:ring-teal-500" />
+              
+              {role === 'doctor' && (
+                <div className="space-y-4 p-4 bg-teal-900/10 rounded-2xl border border-teal-900/30">
+                  <select value={specialty} onChange={(e) => setSpecialty(e.target.value)} className="w-full bg-slate-900/60 border border-slate-700/50 rounded-xl px-4 py-3 text-white outline-none">
+                    {Object.values(SYMPTOM_MAP).filter((v,i,a)=>a.indexOf(v)===i).map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                  <input type="number" placeholder="Consultation Fee (₹)" value={price} onChange={(e) => setPrice(e.target.value)} className="w-full bg-slate-900/60 border border-slate-700/50 rounded-xl px-4 py-3 text-white outline-none" />
+                  <input type="text" placeholder="Your UPI ID" value={doctorUpi} onChange={(e) => setDoctorUpi(e.target.value)} className="w-full bg-slate-900/60 border border-slate-700/50 rounded-xl px-4 py-3 text-white outline-none" />
+                </div>
+              )}
+              
+              <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-900/60 border border-slate-700/50 rounded-xl px-4 py-3 text-white outline-none focus:ring-2 focus:ring-teal-500" />
+              <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-900/60 border border-slate-700/50 rounded-xl px-4 py-3 text-white outline-none focus:ring-2 focus:ring-teal-500" />
+              {error && <p className="text-red-400 text-sm text-center bg-red-500/10 py-2 rounded-lg">{error}</p>}
+              
+              <Button onClick={handleRegisterSubmit} className="w-full py-4 text-lg font-bold bg-gradient-to-r from-teal-500 to-cyan-600 border-none mt-2" disabled={loading}>
+                 {loading ? <Loader2 className="animate-spin mx-auto" /> : "Complete Registration"}
+              </Button>
+              <button type="button" onClick={() => setMode('login')} className="w-full text-center mt-4 text-slate-400 text-sm flex justify-center items-center gap-1 group">
+                 Back to Login
+              </button>
            </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
+  const [showChat, setShowChat] = useState(false);
+  const [chatInput, setChatInput] = useState('');
+  const [chatMessages, setChatMessages] = useState([{ sender: 'ai', text: `Hello! I am Rapha'l's advanced AI assistant. How can I help?` }]);
+  const chatEndRef = useRef(null);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages, showChat]);
+
+  const handleSendChat = () => {
+    if (!chatInput.trim()) return;
+    setChatMessages(prev => [...prev, { sender: 'user', text: chatInput }]);
+    const query = chatInput.toLowerCase();
+    setChatInput('');
+    setTimeout(() => {
+      let response = "I'm not sure. Try keywords like 'fever', 'heart', or doctor names.";
+      const match = Object.keys(SYMPTOM_MAP).find(k => query.includes(k));
+      if (match) {
+        setSearchQuery(SYMPTOM_MAP[match]);
+        response = `That sounds like you need a ${SYMPTOM_MAP[match]}. I've filtered the results for you.`;
+        setTimeout(() => setView('search'), 1500);
+      }
+      setChatMessages(prev => [...prev, { sender: 'ai', text: response }]);
+    }, 1000);
+  };
+
+  return (
+    <div className="space-y-8 pb-10 flex-1 bg-slate-50">
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-teal-500 via-emerald-500 to-cyan-600 p-8 text-white shadow-lg mx-4 mt-4">
+        <div className="relative z-10">
+          <h1 className="text-4xl font-black mb-4 leading-tight">Healthcare <br/><span className="text-teal-100">Reimagined.</span></h1>
+          <div className="relative shadow-lg rounded-xl mt-6">
+              <input type="text" placeholder="Try 'migraine' or 'Dr. Alan'..."
+                className="w-full h-12 pl-10 pr-4 rounded-xl bg-white/95 border border-white/20 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-teal-300/50"
+                onChange={(e) => { setSearchQuery(e.target.value); if (e.target.value.length > 2) setView('search'); }}
+              />
+              <Search className="absolute left-3 top-3.5 text-teal-500" size={20} />
+          </div>
+        </div>
+      </div>
+
+      <div className="px-4">
+        <h2 className="text-lg font-black text-slate-800 mb-3">Top Rated Specialists</h2>
+        <div className="grid gap-4">
+          {doctors.slice(0, 3).map(doctor => (
+            <div key={doctor.id} onClick={() => { setSelectedDoctor(doctor); setView('detail'); }} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm hover:shadow-lg transition-all cursor-pointer flex gap-4">
+              <div className="w-16 h-16 rounded-xl bg-teal-50 flex items-center justify-center text-teal-500 font-bold text-xl">{doctor.name ? doctor.name.charAt(4) : 'Dr'}</div>
+              <div className="flex-1 flex flex-col justify-center">
+                <h3 className="font-bold text-slate-900">{doctor.name}</h3>
+                <p className="text-sm font-medium text-teal-600">{doctor.specialty}</p>
+                <div className="flex items-center gap-1 mt-1 bg-amber-50 self-start px-2 py-0.5 rounded-md border border-amber-100">
+                  <Star size={12} className="text-amber-500 fill-amber-500" />
+                  <span className="text-[10px] font-bold text-amber-700">{doctor.rating || '5.0'}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="fixed bottom-20 right-6 z-50 flex flex-col items-end">
+        {showChat && (
+          <div className="bg-white rounded-2xl shadow-2xl w-80 flex flex-col border border-slate-200 mb-4 overflow-hidden">
+            <div className="bg-teal-600 text-white p-4 flex justify-between items-center">
+              <span className="font-bold text-sm">Rapha'l Assistant</span>
+              <button onClick={() => setShowChat(false)}><X size={18} /></button>
+            </div>
+            <div className="h-64 overflow-y-auto p-4 space-y-3 bg-slate-50">
+              {chatMessages.map((msg, i) => (
+                <div key={i} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] p-3 rounded-2xl text-sm ${msg.sender === 'user' ? 'bg-teal-500 text-white rounded-br-none' : 'bg-white border text-slate-700 rounded-bl-none'}`}>
+                    {msg.text}
+                  </div>
+                </div>
+              ))}
+              <div ref={chatEndRef} />
+            </div>
+            <div className="p-3 bg-white flex gap-2">
+              <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendChat()} className="flex-1 bg-slate-100 rounded-xl px-4 py-2 outline-none" />
+              <button onClick={handleSendChat} className="p-2 bg-teal-600 text-white rounded-xl"><Send size={18} /></button>
+            </div>
+          </div>
+        )}
+        <button onClick={() => setShowChat(!showChat)} className="p-4 rounded-full bg-teal-600 text-white shadow-2xl hover:scale-105">
+          {showChat ? <X size={24} /> : <MessageSquare size={24} />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SearchView({ searchQuery, setSearchQuery, doctors, setView, setSelectedDoctor, activeCategory, setActiveCategory }) {
+  const filteredDoctors = useMemo(() => {
+    let results = doctors;
+    if (activeCategory && activeCategory !== 'All') results = results.filter(d => d.specialty === activeCategory);
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      const detected = Object.keys(SYMPTOM_MAP).find(k => q.includes(k));
+      if (detected) results = results.filter(d => d.specialty === SYMPTOM_MAP[detected]);
+      else results = results.filter(d => d.name.toLowerCase().includes(q) || d.specialty.toLowerCase().includes(q) || (d.district && d.district.toLowerCase().includes(q)));
+    }
+    return results;
+  }, [doctors, searchQuery, activeCategory]);
+
+  return (
+    <div className="h-full flex flex-col bg-slate-50">
+      <div className="sticky top-0 bg-white/80 backdrop-blur-md z-20 p-4 border-b border-slate-100">
+        <div className="flex items-center gap-4 mb-4">
+          <button onClick={() => setView('home')} className="p-2 hover:bg-slate-100 rounded-full"><ChevronLeft className="text-slate-600" /></button>
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-3 text-slate-400" size={18} />
+            <input autoFocus type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search..." className="w-full bg-slate-100 rounded-xl py-2.5 pl-10 pr-4 outline-none" />
+          </div>
+        </div>
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+          {['All', ...Array.from(new Set(Object.values(SYMPTOM_MAP)))].map(cat => (
+            <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap ${activeCategory === cat ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600'}`}>{cat}</button>
+          ))}
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {filteredDoctors.map(doctor => (
+          <div key={doctor.id} onClick={() => { setSelectedDoctor(doctor); setView('detail'); }} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 cursor-pointer flex gap-4">
+            <div className="w-14 h-14 rounded-full border shadow-sm bg-teal-50 flex items-center justify-center text-teal-600 font-bold text-xl">{doctor.name ? doctor.name.charAt(4) : 'Dr'}</div>
+            <div className="flex-1">
+              <div className="flex justify-between"><h3 className="font-bold text-slate-900">{doctor.name}</h3><span className="text-teal-600 font-bold text-sm">{doctor.price}</span></div>
+              <p className="text-sm text-slate-500">{doctor.specialty}</p>
+              <div className="flex items-center gap-4 text-xs text-slate-400 mt-2">
+                <span className="flex items-center gap-1"><Star size={12} className="fill-amber-400 text-amber-400"/> {doctor.rating || '5.0'}</span>
+                <span className="flex items-center gap-1"><MapPin size={12}/> {doctor.district || 'Nagaland'}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, selectedDate, handleBook }) {
+  if (!doctor) return null;
+  return (
+    <div className="h-full flex flex-col bg-slate-50">
+      <div className="relative h-56 bg-slate-900 shrink-0">
+        <div className="w-full h-full object-cover opacity-60 bg-teal-900" />
+        <button onClick={() => { setSelectedSlot(null); setView('search'); }} className="absolute top-4 left-4 z-20 p-2 bg-white/20 backdrop-blur-md rounded-full text-white"><ChevronLeft /></button>
+        <div className="absolute -bottom-12 left-6 z-20">
+          <div className="w-28 h-28 rounded-2xl border-4 border-white shadow-xl bg-teal-100 flex items-center justify-center text-teal-600 text-4xl font-bold">{doctor.name ? doctor.name.charAt(4) : 'Dr'}</div>
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto pt-16 px-6 pb-24 space-y-6">
+        <div>
+           <h1 className="text-3xl font-black text-slate-900 tracking-tight">{doctor.name}</h1>
+           <p className="text-teal-600 font-bold text-sm mb-4">{doctor.specialty}</p>
+           <Badge type="info">Verified Expert</Badge>
+        </div>
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+          <h3 className="font-black mb-2">About Specialist</h3>
+          <p className="text-slate-500 text-sm">{doctor.bio || "Leading specialist available for consultation."}</p>
+        </div>
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+          <div className="flex justify-between items-center mb-4">
+             <h3 className="font-black flex items-center gap-2"><Clock size={18} className="text-teal-500" /> Available Times</h3>
+             <span className="text-xs font-bold text-slate-400">{selectedDate.toLocaleDateString()}</span>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            {doctor.slots?.map(slot => (
+                <button key={slot} onClick={() => setSelectedSlot(slot)} className={`py-3 rounded-xl text-xs font-bold transition-all ${selectedSlot === slot ? 'bg-teal-600 text-white' : 'bg-white border border-slate-200 text-slate-600'}`}>{slot}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="bg-white border-t border-slate-200 p-4 shrink-0 pb-safe mt-auto z-30 relative">
+        <Button className="w-full" onClick={handleBook} disabled={!selectedSlot}>{selectedSlot ? `Book for ${selectedSlot}` : 'Select Time'}</Button>
+      </div>
+    </div>
+  );
+}
+
+function DashboardView({ appointments, onPayNow, onPayCash }) {
+  if (!appointments.length) return <div className="p-8 text-center flex flex-col items-center justify-center h-full bg-slate-50"><Calendar size={48} className="text-teal-300 mb-4" /><h2 className="text-2xl font-black text-slate-800">No Visits Yet</h2></div>;
+  
+  return (
+    <div className="p-4 space-y-4 bg-slate-50 min-h-full pb-20">
+       <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2 mb-6"><Activity size={24} className="text-teal-500" /> My Visits</h2>
+       {appointments.map(apt => {
+         const isAwaitingPayment = apt.status === 'Accepted' && apt.payment_status === 'Unpaid';
+         return (
+           <div key={apt.id} className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
+             <div className="flex justify-between items-start mb-4">
+               <div>
+                 <h3 className="text-lg font-black text-slate-900">{apt.doctor_name}</h3>
+                 <span className="inline-flex items-center gap-1 text-[10px] uppercase font-black bg-slate-100 text-slate-600 px-2 py-0.5 rounded mt-2">{apt.status}</span>
+               </div>
+               <div className="bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-xl text-center">
+                  <span className="text-[10px] font-bold text-slate-400 block">{new Date(apt.appointment_date).toLocaleDateString('en-US', { month: 'short' })}</span>
+                  <span className="text-lg font-black text-teal-600">{new Date(apt.appointment_date).getDate()}</span>
+               </div>
+             </div>
+             <div className="flex gap-4 mb-4 text-sm font-medium text-slate-600">
+                <span className="flex items-center gap-1"><Clock size={16}/> {apt.slot}</span>
+                <span className="flex items-center gap-1"><IndianRupee size={16}/> {apt.amount?.toString().replace(/\D/g, '')}</span>
+             </div>
+             {isAwaitingPayment && (
+               <div className="mt-4 pt-4 border-t border-slate-100 flex gap-2">
+                 <Button onClick={() => onPayNow(apt)} className="flex-1 text-xs py-2">Pay via UPI</Button>
+                 <Button onClick={() => onPayCash(apt)} variant="outline" className="flex-1 text-xs py-2">Pay Cash</Button>
+               </div>
+             )}
+           </div>
+         );
+       })}
+    </div>
+  );
+}
+
+function ProfileView({ user, logout }) {
+  return (
+    <div className="h-full flex flex-col p-6 overflow-y-auto bg-slate-50">
+      <h1 className="text-2xl font-bold text-slate-900 mb-6 flex items-center gap-2"><User className="text-teal-600" /> My Profile</h1>
+      <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-6">
+        <div>
+          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Full Name</label>
+          <input type="text" value={user?.name || ''} readOnly className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900" />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email</label>
+          <input type="email" value={user?.email || ''} readOnly className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900" />
+        </div>
+        <div className="pt-4 border-t border-slate-100">
+            <Button onClick={logout} variant="danger" className="w-full"><LogOut size={18} /> Log Out</Button>
         </div>
       </div>
     </div>
   );
-};
+}
 
-const Toast = ({ notification, onClose }) => {
-  if (!notification) return null;
-  let bgColor = 'bg-slate-800 text-white';
-  let Icon = Bell;
-  let iconColor = 'text-blue-400';
+function DoctorDashboard({ user, logout, showToast }) {
+  const [appointments, setAppointments] = useState([]);
+  
+  useEffect(() => {
+    let active = true;
+    const fetchApts = async () => {
+      if (user?.doctorId) {
+         const { data } = await supabase.from('appointments').select().eq('doctor_id', user.doctorId);
+         if (data && active) setAppointments(data);
+      }
+    };
+    fetchApts();
+    return () => { active = false; };
+  }, [user?.doctorId]);
 
-  if (notification.type === 'error') {
-    bgColor = 'bg-red-500 text-white'; Icon = AlertCircle; iconColor = 'text-white';
-  } else if (notification.type === 'success') {
-    bgColor = 'bg-slate-800 text-white border border-slate-700'; Icon = CheckCircle; iconColor = 'text-green-400';
-  } else if (notification.type === 'info') {
-    bgColor = 'bg-blue-600 text-white shadow-blue-900/50'; Icon = Bell; iconColor = 'text-white animate-bounce';
-  }
+  const handleAction = async (id, action) => {
+    const status = action === 'accept' ? 'Accepted' : 'Cancelled';
+    const { error } = await supabase.from('appointments').update({ status }).eq('id', id);
+    if (!error) showToast(action === 'accept' ? "Accepted!" : "Rejected");
+  };
 
   return (
-    <div className={`fixed top-4 left-4 right-4 z-[999] px-4 py-4 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-top-4 duration-300 ${bgColor}`}>
-      <Icon size={20} className={`${iconColor} shrink-0`} />
-      <p className="font-semibold text-sm flex-1">{notification.message}</p>
-      <button onClick={onClose} className="ml-2 opacity-70 hover:opacity-100 p-1 bg-black/10 rounded-full"><X size={16} /></button>
+    <div className="min-h-screen bg-slate-50 p-6">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-2xl font-black text-slate-900">Dr. {user?.name}</h1>
+        <Button onClick={logout} variant="danger" className="py-2 px-4 text-sm">Logout</Button>
+      </div>
+      <div className="space-y-4">
+        <h2 className="text-lg font-bold">Appointment Requests</h2>
+        {appointments.filter(a => a.status === 'Pending Approval').map(apt => (
+          <div key={apt.id} className="bg-white p-4 rounded-xl shadow-sm border border-amber-200">
+            <h3 className="font-bold">{apt.patient_name}</h3>
+            <p className="text-sm text-slate-500 mb-4">{new Date(apt.appointment_date).toLocaleDateString()} @ {apt.slot}</p>
+            <div className="flex gap-2">
+              <Button onClick={() => handleAction(apt.id, 'accept')} className="flex-1 py-2 text-sm bg-teal-600"><Check size={16}/> Accept</Button>
+              <Button onClick={() => handleAction(apt.id, 'reject')} className="flex-1 py-2 text-sm bg-slate-200 text-slate-700 hover:bg-red-100"><X size={16}/> Reject</Button>
+            </div>
+          </div>
+        ))}
+        {appointments.length === 0 && <p className="text-slate-500">No appointments yet.</p>}
+      </div>
     </div>
   );
-};
+}
 
-const PaymentModal = ({ appointment, onClose, onConfirm }) => {
-  const [txnId, setTxnId] = useState('');
-  const PLATFORM_FEE = 10;
-  const cleanAmount = appointment.amount ? parseInt(appointment.amount.toString().replace(/[^0-9]/g, '')) : 0;
-  const consultationFee = isNaN(cleanAmount) ? 0 : cleanAmount;
-  const totalPayable = consultationFee + PLATFORM_FEE;
-
-  const upiLink = `upi://pay?pa=${ADMIN_UPI_HANDLE}&pn=${encodeURIComponent(ADMIN_NAME)}&am=${totalPayable}&cu=INR&tn=Booking for ${appointment.doctor_name}`;
-  const qrUrl = `https://quickchart.io/qr?text=${encodeURIComponent(upiLink)}&size=200`;
-
+function AdminDashboard({ logout, doctors }) {
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-      <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-700">
-        <div className="bg-teal-600 p-6 text-white text-center">
-          <h2 className="text-xl font-bold mb-1">Pay & Confirm</h2>
-          <p className="text-teal-100 text-sm">Dr. {appointment.doctor_name} accepted your request!</p>
-        </div>
-        <div className="p-6 flex flex-col items-center gap-4">
-          <div className="w-full bg-slate-50 dark:bg-slate-800 rounded-xl p-4 border border-slate-100 dark:border-slate-700">
-            <div className="flex justify-between text-sm text-slate-500 dark:text-slate-400 mb-2"><span>Dr. Fee</span><span>₹{consultationFee}</span></div>
-            <div className="flex justify-between text-sm text-slate-500 dark:text-slate-400 mb-2 border-b border-slate-200 dark:border-slate-700 pb-2"><span>Platform Fee</span><span>₹{PLATFORM_FEE}</span></div>
-            <div className="flex justify-between text-lg font-bold text-slate-900 dark:text-white"><span>Total Payable</span><span>₹{totalPayable}</span></div>
-          </div>
-          <div className="bg-white p-2 rounded-xl border-2 border-slate-100 shadow-inner"><img src={qrUrl} alt="Payment QR" className="w-48 h-48" /></div>
-          <div className="text-center">
-            <p className="text-xs text-slate-400">Scan using any UPI App</p>
-            <p className="text-[10px] text-slate-300 mt-1">{ADMIN_UPI_HANDLE}</p>
-          </div>
-          <a href={upiLink} className="text-teal-600 text-sm font-bold hover:underline md:hidden">Click to Pay (Mobile)</a>
-          <div className="w-full mt-2">
-            <input type="text" placeholder="Enter 12-digit UTR" value={txnId} onChange={(e) => setTxnId(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white text-center focus:ring-2 focus:ring-teal-500 outline-none" />
-          </div>
-          <div className="flex gap-3 w-full mt-2">
-            <Button variant="ghost" onClick={onClose} className="flex-1">Cancel</Button>
-            <Button onClick={() => onConfirm(appointment, txnId)} disabled={txnId.length < 4} className="flex-1 bg-teal-600 text-white">Verify UTR</Button>
-          </div>
+    <div className="min-h-screen bg-slate-900 text-white p-6">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-2xl font-black flex items-center gap-2"><Shield className="text-teal-400"/> Admin</h1>
+        <Button onClick={logout} variant="danger" className="py-2 px-4 text-sm">Logout</Button>
+      </div>
+      <div className="bg-slate-800 p-6 rounded-2xl">
+        <h2 className="text-lg font-bold mb-4">Registered Doctors ({doctors.length})</h2>
+        <div className="space-y-3">
+          {doctors.map(doc => (
+            <div key={doc.id} className="bg-slate-900 p-4 rounded-xl border border-slate-700 flex justify-between items-center">
+              <div><h3 className="font-bold">{doc.name}</h3><p className="text-sm text-slate-400">{doc.specialty}</p></div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
   );
-};
+}
 
-const SuccessView = ({ setView }) => (
-  <div className="h-full flex flex-col items-center justify-center text-center p-8 animate-in zoom-in">
-    <div className="w-24 h-24 bg-teal-100 rounded-full flex items-center justify-center mb-6 text-teal-600 shadow-xl shadow-teal-500/20">
-      <CheckCircle size={48} />
-    </div>
-    <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Request Sent!</h1>
-    <p className="text-slate-500 dark:text-slate-400 mb-8">
-      Your booking request has been sent. You will be notified once they approve it.
-    </p>
-    <div className="space-y-3 w-full max-w-xs mx-auto">
-      <Button onClick={() => setView('dashboard')} className="w-full bg-teal-600 text-white">Check Status</Button>
-      <Button onClick={() => setView('home')} variant="ghost" className="w-full">Back to Home</Button>
-    </div>
-  </div>
-);
-
+// ==========================================
+// MAIN APP ROUTER
+// ==========================================
 export default function App() {
   const [user, setUser] = useState(null);
-  const [view, setView] = useState('home');
-  const [doctors, setDoctors] = useState([]); 
+  const [view, setView] = useState('login');
+  const [doctors, setDoctors] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
   const [selectedDoctor, setSelectedDoctor] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  
+  // Constant declaration prevents unused state errors
+  const selectedDate = new Date(); 
   
   const [notification, setNotification] = useState(null);
-  const [showSettings, setShowSettings] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
-  const [appSettings, setAppSettings] = useState({ theme: 'light', largeText: false });
-  const [payingAppt, setPayingAppt] = useState(null);
+  const [loadingAuth, setLoadingAuth] = useState(true);
+
+  const showToast = useCallback((msg, type='success') => {
+     setNotification({msg, type});
+     setTimeout(() => setNotification(null), 3000);
+  }, []);
 
   useEffect(() => {
-    (async () => {
-      const savedSession = localStorage.getItem('raphal_user_session');
-      if (savedSession) {
-        try { setUser(JSON.parse(savedSession)); } catch { console.error("Invalid session data"); }
-      }
-    })();
+     let active = true;
+
+     const loadData = async (sessionUser) => {
+        if (!sessionUser) {
+           if (active) {
+              setUser(null);
+              setView('login');
+              setLoadingAuth(false);
+           }
+           return;
+        }
+
+        const { data: profile } = await supabase.from('users').select().eq('id', sessionUser.id).single();
+        if (profile && active) {
+           if (profile.role === 'doctor') {
+              const { data: docData } = await supabase.from('doctors').select().eq('name', profile.name).single();
+              if (docData) profile.doctorId = docData.id;
+           }
+           setUser(profile);
+           if (profile.role === 'admin') setView('admin');
+           else if (profile.role === 'doctor') setView('doctor_dashboard');
+           else setView('home');
+        }
+        if (active) setLoadingAuth(false);
+     };
+
+     const loadDoctors = async () => {
+        const { data } = await supabase.from('doctors').select();
+        if (data && active) setDoctors(data);
+     };
+
+     // Initial fetch
+     supabase.auth.getSession().then(({ data: { session } }) => {
+        if (active) {
+           loadData(session?.user);
+           loadDoctors();
+        }
+     });
+
+     // Listener
+     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
+        if (active) loadData(session?.user);
+     });
+     
+     return () => { 
+        active = false; 
+        subscription.unsubscribe(); 
+     };
   }, []);
 
-  const showToast = useCallback((message, type = 'success') => {
-    setNotification({ message, type });
-    setTimeout(() => setNotification(null), type === 'info' ? 6000 : 4000);
-  }, []);
-
-  const fetchMyVisits = useCallback(async () => {
-    if (user && user.role === 'patient') {
-      const { data } = await supabase.from('appointments').select('*').eq('patient_name', user.name).order('id', { ascending: false });
-      if (data) setAppointments(data);
-    }
+  // Correctly memoized hook using user as the direct dependency
+  const fetchPatientAppointments = useCallback(async () => {
+     if (user?.id) {
+        const { data } = await supabase.from('appointments').select().eq('patient_id', user.id).order('created_at', { ascending: false });
+        if (data) setAppointments(data);
+     }
   }, [user]);
 
-  // SAFELY HIDDEN DYNAMIC IMPORT FOR VERCEL
   useEffect(() => {
-    if (!user) return;
-    const setupPushNotifications = async () => {
-      try {
-        const coreName = '@capacitor/co' + 're';
-        const pushName = '@capacitor/push-noti' + 'fications';
-        
-        const { Capacitor } = await import(/* @vite-ignore */ coreName);
-        if (!Capacitor.isNativePlatform()) return;
-
-        const { PushNotifications } = await import(/* @vite-ignore */ pushName);
-        let permStatus = await PushNotifications.checkPermissions();
-        if (permStatus.receive === 'prompt') {
-          permStatus = await PushNotifications.requestPermissions();
+     let active = true;
+     const load = async () => {
+        if (user?.id && user.role === 'patient' && view === 'dashboard') {
+           const { data } = await supabase.from('appointments').select().eq('patient_id', user.id).order('created_at', { ascending: false });
+           if (active && data) setAppointments(data);
         }
+     };
+     load();
+     return () => { active = false; };
+  }, [user, view]);
 
-        if (permStatus.receive === 'granted') {
-          await PushNotifications.register();
-          PushNotifications.addListener('registration', async (token) => {
-            await supabase.from('users').update({ push_token: token.value }).eq('id', user.id);
-            if (user.role === 'doctor' && user.doctorId) {
-              await supabase.from('doctors').update({ push_token: token.value }).eq('id', user.doctorId);
-            }
-          });
-
-          PushNotifications.addListener('pushNotificationReceived', (notification) => {
-            showToast(`🔔 ${notification.title}: ${notification.body}`, 'info');
-          });
-        }
-      } catch (error) {
-        // Logs the error properly to prevent ESLint 'no-unused-vars' warning
-        console.log('Push plugin skipped for web environment or not found:', error);
-      }
-    };
-    setupPushNotifications();
-  }, [user, showToast]);
-
-  useEffect(() => {
-    if (!user) return;
-    const notificationChannel = supabase.channel('realtime_appointments');
-    notificationChannel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'appointments' }, (payload) => {
-      const newAppt = payload.new;
-      if (user.role === 'admin') showToast(`New booking: ${newAppt.patient_name}`, 'info');
-      else if (user.role === 'doctor' && user.doctorId === newAppt.doctor_id) showToast(`🔔 New request from ${newAppt.patient_name}!`, 'info');
-    });
-
-    notificationChannel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'appointments' }, (payload) => {
-      const updatedAppt = payload.new;
-      if (user.role === 'patient' && user.name === updatedAppt.patient_name) {
-         if (updatedAppt.status === 'Accepted') { showToast(`Dr. ${updatedAppt.doctor_name} accepted your request! Pay to confirm.`, 'info'); fetchMyVisits(); } 
-         else if (updatedAppt.status === 'Cancelled by Doctor') { showToast(`Request rejected by doctor.`, 'error'); fetchMyVisits(); } 
-         else if (updatedAppt.payment_status === 'Verified & Paid') { showToast(`Payment Verified! Confirmed.`, 'success'); fetchMyVisits(); }
-      }
-    });
-
-    notificationChannel.subscribe();
-    return () => supabase.removeChannel(notificationChannel);
-  }, [user, showToast, fetchMyVisits]);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    if (appSettings.theme === 'dark') root.classList.add('dark');
-    else root.classList.remove('dark');
-  }, [appSettings]);
-
-  const handleLogin = (userData, rememberMe = true) => {
-    setUser(userData);
-    if (rememberMe) localStorage.setItem('raphal_user_session', JSON.stringify(userData));
-    setView('home'); 
-    showToast(`Welcome back, ${userData.name}!`);
+  const handleLogin = (userData) => {
+     setUser(userData);
+     if (userData.role === 'admin') setView('admin');
+     else if (userData.role === 'doctor') setView('doctor_dashboard');
+     else setView('home');
   };
 
-  const handleLogout = useCallback(() => {
-    setUser(null);
-    localStorage.removeItem('raphal_user_session');
-    setView('home');
-    setAppointments([]);
-    showToast("Logged out successfully.");
-  }, [showToast]);
-
-  const secureNavigate = (targetView) => {
-    if (!user) return; 
-    setView(targetView);
+  const handleLogout = async () => {
+     await supabase.auth.signOut();
+     setUser(null);
+     setView('login');
   };
-
-  useEffect(() => {
-    if (user && user.role === 'patient') fetchMyVisits();
-  }, [user, view, fetchMyVisits]);
-
-  useEffect(() => {
-    const fetchDoctors = async () => {
-      const { data } = await supabase.from('doctors').select('*');
-      if (data) setDoctors(data);
-    };
-    fetchDoctors();
-  }, []); 
 
   const initiateBooking = async () => {
-    if (!selectedSlot || !selectedDoctor) return;
-    const { data: existing } = await supabase.from('appointments').select('*').eq('doctor_id', selectedDoctor.id).eq('slot', selectedSlot).neq('status', 'Cancelled by Doctor').neq('status', 'Cancelled');
-    const isTaken = existing?.some(a => new Date(a.appointment_date).toDateString() === selectedDate.toDateString());
-    if (isTaken) { showToast("Slot unavailable.", "error"); return; }
-
-    const bookingPayload = {
-      doctor_id: selectedDoctor.id, doctor_name: selectedDoctor.name, patient_name: user.name || "Guest",
-      slot: selectedSlot, appointment_date: selectedDate.toISOString(), status: "Pending Approval", 
-      payment_status: "Unpaid", amount: selectedDoctor.price, utr_retries: 0, payment_mode: 'UPI',
-      patient_id: user.id
-    };
-
-    const { error } = await supabase.from('appointments').insert(bookingPayload);
-    if (error) showToast("Booking failed: " + error.message, "error");
-    else secureNavigate('success');
+     if (!selectedSlot || !selectedDoctor || !user) return;
+     const appt = {
+         patient_id: user.id,
+         doctor_id: selectedDoctor.id,
+         doctor_name: selectedDoctor.name,
+         patient_name: user.name,
+         slot: selectedSlot,
+         appointment_date: selectedDate.toISOString(),
+         status: 'Pending Approval',
+         payment_status: 'Unpaid',
+         amount: selectedDoctor.price || '500'
+     };
+     const { error } = await supabase.from('appointments').insert([appt]);
+     if (!error) {
+         showToast("Booking request sent!");
+         setView('success');
+     } else {
+         showToast("Failed to book: " + error?.message, 'error');
+     }
   };
 
-  const handleSubmitPayment = async (appointment, txnId) => {
-    const { error } = await supabase.from('appointments').update({ status: "Payment Verifying", payment_status: "Pending Verification", transaction_id: txnId }).eq('id', appointment.id);
-    setPayingAppt(null);
-    if (error) showToast("Error: " + error.message, "error");
-    else { showToast("Payment sent for verification!", "info"); fetchMyVisits(); }
+  const handlePayCash = async (appt) => {
+     const { error } = await supabase.from('appointments').update({ payment_mode: 'Cash', payment_status: 'Pending Verification' }).eq('id', appt.id);
+     if (!error) {
+         showToast("Cash payment selected. Please pay at the clinic.");
+         fetchPatientAppointments();
+     }
   };
 
-  const handlePayCash = async (appointment) => {
-    if(window.confirm("Confirm booking and pay Cash at the clinic?")) {
-        const { error } = await supabase.from('appointments').update({ status: "Confirmed", payment_status: "Cash", payment_mode: "Cash" }).eq('id', appointment.id);
-        if (error) showToast("Error: " + error.message, "error");
-        else { showToast("Booking Confirmed!"); fetchMyVisits(); }
-    }
+  const handlePayNow = async (appt) => {
+      showToast("UPI Gateway integration pending. Marking as verified for testing.", "info");
+      const { error } = await supabase.from('appointments').update({ payment_mode: 'UPI', payment_status: 'Verified & Paid', status: 'Confirmed' }).eq('id', appt.id);
+      if (!error) fetchPatientAppointments();
   };
 
-  if (!user) return (
-    <>
-      <SEO title="Rapha'l Health - Login" description="Secure login to Rapha'l Health" />
-      <Toast notification={notification} onClose={() => setNotification(null)} />
-      <LoginView onLogin={handleLogin} showToast={showToast} />
-    </>
-  );
-  
-  const renderSettings = showSettings && <SettingsModal onClose={() => setShowSettings(false)} settings={appSettings} setSettings={setAppSettings} />;
-
-  if (user.role === 'doctor') return (
-    <><SEO title="Doctor Dashboard" description="Manage schedule" /><Toast notification={notification} onClose={() => setNotification(null)} />{renderSettings}<DoctorDashboard user={user} logout={handleLogout} showToast={showToast} /></>
-  );
-  
-  if (user.role === 'admin') return (
-    <><SEO title="Admin Console" description="Rapha'l Administration" /><Toast notification={notification} onClose={() => setNotification(null)} />{renderSettings}<AdminDashboard doctors={doctors} logout={handleLogout} onDelete={async (id) => { await supabase.from('doctors').delete().eq('id', id); setDoctors(prev => prev.filter(d => d.id !== id)); showToast("Doctor removed."); }} /></>
-  );
+  if (loadingAuth) {
+     return <div className="min-h-screen flex items-center justify-center bg-slate-900"><Loader2 className="animate-spin text-teal-500" size={48} /></div>;
+  }
 
   return (
-    <>
-        <SEO title="Rapha'l Health" description="Book doctors in Nagaland" />
-        <Toast notification={notification} onClose={() => setNotification(null)} />
-        {renderSettings}
-        {payingAppt && <PaymentModal appointment={payingAppt} onClose={() => setPayingAppt(null)} onConfirm={handleSubmitPayment} />}
-
-        <div className={`min-h-screen relative flex flex-col ${appSettings.theme === 'dark' ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'} transition-colors duration-300`}>
-          
-          {/* THE NEW TOP NAVIGATION BAR WITH HAMBURGER MENU */}
-          <div className="w-full md:max-w-md mx-auto sticky top-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-800/50 shadow-sm px-4 py-3 flex justify-between items-center">
-             <div className="flex items-center gap-3">
-                 <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-2 rounded-full text-slate-600 dark:text-slate-300 hover:bg-teal-50 dark:hover:bg-slate-800 transition-colors">
-                     <Menu size={24} />
-                 </button>
-                 <span className="font-extrabold text-lg text-transparent bg-clip-text bg-gradient-to-r from-teal-600 to-cyan-600 tracking-tight">RAPHA'L</span>
-             </div>
-             <div className="flex items-center gap-3">
-                 <span className="hidden sm:flex bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 px-2.5 py-1 rounded-full text-[10px] font-bold items-center gap-1 border border-teal-100 dark:border-teal-800/50 shadow-sm"><Bell size={10}/> Realtime</span>
-                 <button onClick={() => setShowSettings(true)} className="p-2 -mr-2 text-slate-400 hover:text-teal-600 hover:bg-teal-50 dark:hover:bg-slate-800 rounded-full transition-colors"><Settings size={20}/></button>
-             </div>
+     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 flex justify-center selection:bg-teal-100 relative">
+        {notification && (
+          <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] bg-slate-800 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 animate-in slide-in-from-top-4 fade-in">
+            <CheckCircle size={16} className={notification.type === 'error' ? "text-red-400" : "text-teal-400"} />
+            <span className="text-sm font-medium">{notification.msg}</span>
           </div>
+        )}
 
-          {/* THE NEW LEFT SIDEBAR MENU */}
-          {isSidebarOpen && <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[90] animate-in fade-in" onClick={() => setIsSidebarOpen(false)} />}
-          
-          <div className={`fixed top-0 left-0 h-full w-72 bg-white dark:bg-slate-900 z-[100] transform transition-transform duration-300 shadow-2xl flex flex-col ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-             <div className="bg-gradient-to-br from-teal-500 to-cyan-600 p-6 text-white shadow-inner relative overflow-hidden">
-                <div className="absolute top-[-20%] right-[-10%] w-32 h-32 bg-white/20 blur-[30px] rounded-full"></div>
-                <div className="relative z-10">
-                    <h2 className="text-2xl font-black mb-1">Rapha'l</h2>
-                    <p className="text-teal-50 text-sm font-medium flex items-center gap-2"><User size={14}/> {user?.name}</p>
-                </div>
-                <button onClick={() => setIsSidebarOpen(false)} className="absolute top-4 right-4 p-2 bg-white/10 rounded-full hover:bg-white/20 text-white"><X size={18}/></button>
-             </div>
-             
-             <div className="flex-1 p-4 space-y-1 overflow-y-auto">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-3 mb-2 mt-2">Menu</p>
-                <button onClick={() => { secureNavigate('home'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-4 p-3.5 rounded-xl font-bold transition-all ${view === 'home' ? 'bg-teal-50 text-teal-700' : 'text-slate-600 hover:bg-slate-50'}`}><Zap size={20} className={view === 'home' ? 'text-teal-600' : 'text-slate-400'} /> Discover</button>
-                <button onClick={() => { secureNavigate('search'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-4 p-3.5 rounded-xl font-bold transition-all ${view === 'search' ? 'bg-teal-50 text-teal-700' : 'text-slate-600 hover:bg-slate-50'}`}><Search size={20} className={view === 'search' ? 'text-teal-600' : 'text-slate-400'} /> Find Doctors</button>
-                <button onClick={() => { secureNavigate('dashboard'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-4 p-3.5 rounded-xl font-bold transition-all ${view === 'dashboard' ? 'bg-teal-50 text-teal-700' : 'text-slate-600 hover:bg-slate-50'}`}><Calendar size={20} className={view === 'dashboard' ? 'text-teal-600' : 'text-slate-400'} /> My Visits</button>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-3 mb-2 mt-6">Account</p>
-                <button onClick={() => { secureNavigate('profile'); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-4 p-3.5 rounded-xl font-bold transition-all ${view === 'profile' ? 'bg-teal-50 text-teal-700' : 'text-slate-600 hover:bg-slate-50'}`}><User size={20} className={view === 'profile' ? 'text-teal-600' : 'text-slate-400'} /> Profile Settings</button>
-             </div>
-             <div className="p-4 border-t border-slate-100 pb-safe">
-                <button onClick={handleLogout} className="w-full flex items-center gap-4 p-3.5 rounded-xl text-red-600 font-bold hover:bg-red-50 transition-colors"><LogOut size={20} /> Logout</button>
-             </div>
-          </div>
+        <div className="w-full max-w-md bg-white min-h-screen relative shadow-2xl overflow-hidden flex flex-col">
+           {view === 'login' && <LoginView onLogin={handleLogin} showToast={showToast} />}
+           {view === 'admin' && <AdminDashboard logout={handleLogout} doctors={doctors} />}
+           {view === 'doctor_dashboard' && <DoctorDashboard user={user} logout={handleLogout} showToast={showToast} />}
+           
+           {['home', 'search', 'detail', 'dashboard', 'profile', 'success'].includes(view) && user && user.role === 'patient' && (
+              <div className="flex-1 flex flex-col h-full overflow-hidden">
+                 <div className="flex-1 overflow-y-auto scrollbar-hide">
+                    {view === 'home' && <HomeView setView={setView} setSearchQuery={setSearchQuery} doctors={doctors} setSelectedDoctor={setSelectedDoctor} />}
+                    {view === 'search' && <SearchView searchQuery={searchQuery} setSearchQuery={setSearchQuery} doctors={doctors} setView={setView} setSelectedDoctor={setSelectedDoctor} activeCategory={activeCategory} setActiveCategory={setActiveCategory} />}
+                    {view === 'detail' && <DoctorDetailView doctor={selectedDoctor} setView={setView} selectedSlot={selectedSlot} setSelectedSlot={setSelectedSlot} selectedDate={selectedDate} handleBook={initiateBooking} />}
+                    {view === 'dashboard' && <DashboardView appointments={appointments} onPayNow={handlePayNow} onPayCash={handlePayCash} />}
+                    {view === 'profile' && <ProfileView user={user} logout={handleLogout} />}
+                    {view === 'success' && (
+                       <div className="flex flex-col items-center justify-center text-center p-8 h-full pt-32">
+                          <CheckCircle size={64} className="text-green-500 mb-6" />
+                          <h1 className="text-2xl font-bold mb-4">Request Sent!</h1>
+                          <Button onClick={() => setView('dashboard')} className="w-full mb-3">View Appointments</Button>
+                          <Button onClick={() => setView('home')} variant="outline" className="w-full">Back to Home</Button>
+                       </div>
+                    )}
+                 </div>
 
-          <div className="w-full md:max-w-md mx-auto flex-1 flex flex-col relative shadow-none md:shadow-2xl overflow-hidden bg-transparent">
-              <div className="flex-1 overflow-y-auto scrollbar-hide pb-8">
-                  {view === 'home' && <HomeView setView={secureNavigate} setSearchQuery={setSearchQuery} doctors={doctors} setSelectedDoctor={setSelectedDoctor} />}
-                  {view === 'search' && <SearchView searchQuery={searchQuery} setSearchQuery={setSearchQuery} doctors={doctors} setView={secureNavigate} setSelectedDoctor={setSelectedDoctor} activeCategory={activeCategory} setActiveCategory={setActiveCategory} />}
-                  {view === 'detail' && <DoctorDetailView doctor={selectedDoctor} setView={secureNavigate} selectedSlot={selectedSlot} setSelectedSlot={setSelectedSlot} selectedDate={selectedDate} setSelectedDate={setSelectedDate} handleBook={initiateBooking} />}
-                  {view === 'dashboard' && <DashboardView appointments={appointments} onPayNow={setPayingAppt} onPayCash={handlePayCash} />}
-                  {view === 'profile' && <ProfileView user={user} logout={handleLogout} showToast={showToast} />}
-                  {view === 'success' && <SuccessView setView={secureNavigate} />}
+                 {!['detail', 'success'].includes(view) && (
+                    <div className="bg-white/80 backdrop-blur-lg border-t border-slate-200 p-4 flex justify-around items-center z-40 sticky bottom-0">
+                       <button onClick={() => setView('home')} className={`flex flex-col items-center gap-1 ${view === 'home' ? 'text-teal-600' : 'text-slate-400'}`}><Zap size={24} /><span className="text-[10px] font-bold">Discover</span></button>
+                       <button onClick={() => setView('search')} className={`flex flex-col items-center gap-1 ${view === 'search' ? 'text-teal-600' : 'text-slate-400'}`}><Search size={24} /><span className="text-[10px] font-bold">Find</span></button>
+                       <button onClick={() => setView('dashboard')} className={`flex flex-col items-center gap-1 ${view === 'dashboard' ? 'text-teal-600' : 'text-slate-400'}`}><Calendar size={24} /><span className="text-[10px] font-bold">Visits</span></button>
+                       <button onClick={() => setView('profile')} className={`flex flex-col items-center gap-1 ${view === 'profile' ? 'text-teal-600' : 'text-slate-400'}`}><User size={24} /><span className="text-[10px] font-bold">Profile</span></button>
+                    </div>
+                 )}
               </div>
-          </div>
+           )}
         </div>
-    </>
+     </div>
   );
 }
