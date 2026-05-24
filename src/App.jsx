@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   Search, Calendar, Clock, MapPin, Star, Shield, Activity, User, CheckCircle, X,
   ArrowRight, Loader2, EyeOff, Check, LogOut, MessageSquare, Send, 
-  ChevronLeft, IndianRupee, Zap, Mail, Lock, Sparkles, ChevronRight
+  ChevronLeft, IndianRupee, Zap, Mail, Lock, Sparkles, ChevronRight, Mic, MicOff, Volume2
 } from 'lucide-react';
 import { supabase } from './lib/supabaseClient';
 
@@ -15,7 +15,68 @@ const SYMPTOM_MAP = {
   eye: 'Ophthalmologist', vision: 'Ophthalmologist',
 };
 
-const USER_PROFILE_FIELDS = 'id, email, name, role, phone, district';
+const EMERGENCY_TERMS = [
+  'severe chest pain',
+  'trouble breathing',
+  'cannot breathe',
+  'fainting',
+  'stroke',
+  'seizure',
+  'heavy bleeding',
+  'unconscious',
+  'suicidal',
+];
+
+const generateCareGuidance = (input, doctors = []) => {
+  const query = input.trim().toLowerCase();
+  if (!query) {
+    return {
+      specialty: null,
+      shouldSearch: false,
+      response: "Tell me what you are feeling, for example fever, chest discomfort, rash, headache, or joint pain.",
+    };
+  }
+
+  const urgentTerm = EMERGENCY_TERMS.find(term => query.includes(term));
+  if (urgentTerm) {
+    return {
+      specialty: 'Emergency Care',
+      shouldSearch: false,
+      response: "This may need urgent care. Please contact local emergency services or visit the nearest emergency department now.",
+    };
+  }
+
+  const matchedKeyword = Object.keys(SYMPTOM_MAP).find(keyword => query.includes(keyword));
+  const specialty = matchedKeyword ? SYMPTOM_MAP[matchedKeyword] : null;
+  const matchingDoctors = specialty ? doctors.filter(doctor => doctor.specialty === specialty) : [];
+
+  if (specialty) {
+    const availability = matchingDoctors.length
+      ? `I found ${matchingDoctors.length} ${specialty.toLowerCase()} option${matchingDoctors.length === 1 ? '' : 's'} for you.`
+      : `I can search for ${specialty.toLowerCase()} options for you.`;
+
+    return {
+      specialty,
+      shouldSearch: true,
+      response: `${availability} This is guidance, not a diagnosis; choose a doctor or seek urgent care if symptoms feel severe.`,
+    };
+  }
+
+  return {
+    specialty: null,
+    shouldSearch: true,
+    response: "I could not confidently match a specialty. I will open search so you can browse doctors, or try describing the main symptom in a few words.",
+  };
+};
+
+const numericAmount = (value) => {
+  const amount = Number(String(value || '').replace(/[^\d.]/g, ''));
+  return Number.isFinite(amount) && amount > 0 ? amount : 500;
+};
+
+const displayAmount = (value) => `Rs. ${numericAmount(value)}`;
+
+const USER_PROFILE_FIELDS = 'id, email, name, role, phone, district, doctorId';
 
 const routeForRole = (role) => {
   if (role === 'admin') return 'admin';
@@ -34,11 +95,20 @@ const profileFromAuthUser = (authUser) => ({
 
 const attachDoctorProfile = async (profile) => {
   if (profile?.role !== 'doctor') return profile;
-  const { data: docProfile } = await supabase
+
+  let query = supabase
     .from('doctors')
     .select('id')
-    .eq('name', profile.name)
-    .maybeSingle();
+    .limit(1);
+
+  if (profile.doctorId) {
+    query = query.eq('id', profile.doctorId);
+  } else {
+    query = query.or(`owner_id.eq.${profile.id},name.eq.${profile.name}`);
+  }
+
+  const { data: docRows } = await query;
+  const docProfile = docRows?.[0];
   return docProfile ? { ...profile, doctorId: docProfile.id } : profile;
 };
 
@@ -63,7 +133,11 @@ const loadUserProfile = async (authUser) => {
     profile = emailProfile;
   }
 
-  return attachDoctorProfile(profile || profileFromAuthUser(authUser));
+  if (!profile) {
+    return saveUserProfile(authUser, profileFromAuthUser(authUser));
+  }
+
+  return attachDoctorProfile(profile);
 };
 
 const saveUserProfile = async (authUser, profileInput) => {
@@ -225,10 +299,12 @@ function LoginView({ onLogin, showToast }) {
          const { data: docData, error: docError } = await supabase.from('doctors').insert([{ 
              name: name.trim(), specialty, rating: 5.0, reviews: 0, image: '', 
              location: 'Online', experience: '1 Year', bio: 'New specialist at Rapha\'l.', 
-             price: `Rs. ${fee}`, slots: ['09:00 AM', '10:00 AM', '02:00 PM'], upi_id: doctorUpi.trim() 
+             price: `Rs. ${fee}`, slots: ['09:00 AM', '10:00 AM', '02:00 PM'], upi_id: doctorUpi.trim(),
+             owner_id: data.user.id
          }]).select().single();
          if (docError) throw new Error("Failed to create doctor profile.");
          currentUser.doctorId = docData.id;
+         await supabase.from('users').update({ doctorId: docData.id }).eq('id', data.user.id);
       }
       if (data.session) {
         if(showToast) showToast(`Welcome to Rapha'l, ${name.trim()}!`);
@@ -367,69 +443,129 @@ function LoginView({ onLogin, showToast }) {
 function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
   const [showChat, setShowChat] = useState(false);
   const [chatInput, setChatInput] = useState('');
-  const [chatMessages, setChatMessages] = useState([{ sender: 'ai', text: `Hi! I'm Rapha'l Assistant. Need help finding a specialist?` }]);
+  const [chatMessages, setChatMessages] = useState([{ sender: 'ai', text: `Hi, I'm Rapha'l Assist. Describe a symptom or tap the mic and I will help you find the right specialist.` }]);
+  const [isListening, setIsListening] = useState(false);
+  const voiceSupported = useMemo(() => Boolean(window.SpeechRecognition || window.webkitSpeechRecognition), []);
   const chatEndRef = useRef(null);
+  const recognitionRef = useRef(null);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages, showChat]);
 
-  const handleSendChat = () => {
-    if (!chatInput.trim()) return;
-    setChatMessages(prev => [...prev, { sender: 'user', text: chatInput }]);
-    const query = chatInput.toLowerCase();
+  const speak = useCallback((text) => {
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'en-IN';
+    utterance.rate = 0.95;
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
+  const handleSendChat = useCallback((overrideText, speakResponse = false) => {
+    const message = (overrideText ?? chatInput).trim();
+    if (!message) return;
+
+    setChatMessages(prev => [...prev, { sender: 'user', text: message }]);
     setChatInput('');
     setTimeout(() => {
-      let response = "I'm not sure. Try keywords like 'fever', 'heart', or doctor names.";
-      const match = Object.keys(SYMPTOM_MAP).find(k => query.includes(k));
-      if (match) {
-        setSearchQuery(SYMPTOM_MAP[match]);
-        response = `That sounds like you need a ${SYMPTOM_MAP[match]}. Let me show you some experts.`;
-        setTimeout(() => setView('search'), 1500);
+      const guidance = generateCareGuidance(message, doctors);
+      if (guidance.specialty && guidance.specialty !== 'Emergency Care') {
+        setSearchQuery(guidance.specialty);
+      } else if (guidance.shouldSearch) {
+        setSearchQuery(message);
       }
-      setChatMessages(prev => [...prev, { sender: 'ai', text: response }]);
-    }, 1000);
+      if (guidance.shouldSearch) {
+        setTimeout(() => setView('search'), 700);
+      }
+      setChatMessages(prev => [...prev, { sender: 'ai', text: guidance.response }]);
+      if (speakResponse) {
+        speak(guidance.response);
+      }
+    }, 350);
+  }, [chatInput, doctors, setSearchQuery, setView, speak]);
+
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-IN';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.onresult = (event) => {
+      const transcript = event.results?.[0]?.[0]?.transcript || '';
+      if (transcript) {
+        setChatInput(transcript);
+        setTimeout(() => handleSendChat(transcript, true), 0);
+      }
+    };
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => setIsListening(false);
+    recognitionRef.current = recognition;
+
+    return () => recognition.stop();
+  }, [handleSendChat]);
+
+  const toggleVoice = () => {
+    if (!recognitionRef.current) {
+      speak('Voice assistance is not supported in this browser.');
+      return;
+    }
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+      return;
+    }
+    setShowChat(true);
+    setIsListening(true);
+    recognitionRef.current.start();
   };
 
   return (
-    <div className="space-y-6 pb-24 flex-1 bg-slate-50/50 min-h-full">
-      {/* Premium Hero Section */}
-      <div className="relative overflow-hidden bg-white px-6 py-10 rounded-b-[2.5rem] shadow-[0_10px_40px_-15px_rgba(0,0,0,0.05)] border-b border-slate-100">
-        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 bg-teal-500/10 rounded-full blur-3xl pointer-events-none"></div>
-        <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-48 h-48 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none"></div>
-        
+    <div className="space-y-6 pb-24 flex-1 bg-gradient-to-br from-sky-50 via-white to-emerald-50 min-h-full">
+      <div className="relative overflow-hidden bg-white px-6 py-9 rounded-b-3xl shadow-[0_20px_70px_-45px_rgba(14,165,233,0.7)] border-b border-cyan-100">
         <div className="relative z-10 flex justify-between items-center mb-6">
            <div>
-             <p className="text-sm font-bold text-teal-600 mb-1 tracking-wide uppercase">Good Morning</p>
-             <h1 className="text-3xl font-black text-slate-900 tracking-tight">Find your <br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-500 to-emerald-500">Specialist.</span></h1>
+             <p className="text-sm font-bold text-cyan-600 mb-1 tracking-wide uppercase">Care starts here</p>
+             <h1 className="text-3xl font-black text-slate-950 tracking-tight">Find your <br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500">Specialist.</span></h1>
            </div>
-           <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center shadow-inner border border-slate-200">
-             <User size={24} className="text-slate-400" />
+           <div className="w-12 h-12 bg-cyan-50 rounded-2xl flex items-center justify-center shadow-inner border border-cyan-100">
+             <User size={24} className="text-cyan-600" />
            </div>
         </div>
 
-        <div className="relative shadow-[0_8px_30px_rgb(0,0,0,0.04)] rounded-2xl group">
+        <div className="relative shadow-[0_12px_40px_rgba(14,165,233,0.10)] rounded-2xl group">
             <input type="text" placeholder="Search doctors, specialties, symptoms..."
-              className="w-full h-14 pl-12 pr-5 rounded-2xl bg-white border border-slate-200 text-slate-800 placeholder-slate-400 outline-none focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10 transition-all text-sm font-medium"
+              className="w-full h-14 pl-12 pr-14 rounded-2xl bg-slate-50 border border-cyan-100 text-slate-800 placeholder-slate-400 outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 transition-all text-sm font-medium"
               onChange={(e) => { setSearchQuery(e.target.value); if (e.target.value.length > 2) setView('search'); }}
             />
-            <Search className="absolute left-4 top-4 text-slate-400 group-focus-within:text-teal-500 transition-colors" size={20} />
-            <div className="absolute right-2 top-2 bg-slate-100 p-2 rounded-xl text-slate-400"><Sparkles size={16}/></div>
+            <Search className="absolute left-4 top-4 text-slate-400 group-focus-within:text-cyan-500 transition-colors" size={20} />
+            <button type="button" onClick={toggleVoice} className={`absolute right-2 top-2 p-2 rounded-xl transition-colors ${isListening ? 'bg-red-50 text-red-500' : 'bg-cyan-50 text-cyan-600 hover:bg-cyan-100'}`}>
+              {isListening ? <MicOff size={16}/> : <Mic size={16}/>}
+            </button>
+        </div>
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          {['fever', 'chest pain', 'skin rash'].map(prompt => (
+            <button key={prompt} onClick={() => { setShowChat(true); handleSendChat(prompt); }} className="rounded-xl border border-cyan-100 bg-cyan-50/70 px-3 py-2 text-xs font-black text-cyan-700 hover:bg-cyan-100 transition-colors">
+              {prompt}
+            </button>
+          ))}
         </div>
       </div>
 
       <div className="px-6 space-y-4">
         <div className="flex justify-between items-end mb-2">
           <h2 className="text-lg font-black text-slate-800">Top Rated Doctors</h2>
-          <button onClick={() => setView('search')} className="text-sm font-bold text-teal-600 hover:text-teal-700 flex items-center gap-1">See all <ChevronRight size={14}/></button>
+          <button onClick={() => setView('search')} className="text-sm font-bold text-cyan-700 hover:text-cyan-900 flex items-center gap-1">See all <ChevronRight size={14}/></button>
         </div>
         
         <div className="grid gap-4">
           {doctors.slice(0, 3).map(doctor => (
-            <div key={doctor.id} onClick={() => { setSelectedDoctor(doctor); setView('detail'); }} className="group bg-white p-4 rounded-[1.5rem] border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-teal-500/5 hover:-translate-y-1 transition-all duration-300 cursor-pointer flex gap-4 items-center">
+            <div key={doctor.id} onClick={() => { setSelectedDoctor(doctor); setView('detail'); }} className="group bg-white p-4 rounded-2xl border border-cyan-50 shadow-sm hover:shadow-xl hover:shadow-cyan-500/10 hover:-translate-y-1 transition-all duration-300 cursor-pointer flex gap-4 items-center">
               <Avatar name={doctor.name} url={doctor.image} size="md" />
               <div className="flex-1 flex flex-col justify-center">
-                <h3 className="font-bold text-slate-900 group-hover:text-teal-600 transition-colors">{doctor.name}</h3>
+                <h3 className="font-bold text-slate-900 group-hover:text-cyan-700 transition-colors">{doctor.name}</h3>
                 <p className="text-xs font-semibold text-slate-500 mb-2">{doctor.specialty}</p>
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100/50">
@@ -446,21 +582,23 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
         </div>
       </div>
 
-      {/* Floating AI Assistant */}
       <div className="fixed bottom-24 right-6 z-50 flex flex-col items-end">
         {showChat && (
-          <div className="bg-white/90 backdrop-blur-2xl rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.2)] w-[85vw] sm:w-80 flex flex-col border border-slate-100 mb-4 overflow-hidden transform animate-in slide-in-from-bottom-4 fade-in duration-300">
-            <div className="bg-gradient-to-r from-teal-500 to-emerald-500 text-white p-4 flex justify-between items-center">
+          <div className="bg-white/95 backdrop-blur-2xl rounded-3xl shadow-[0_24px_70px_-25px_rgba(14,165,233,0.38)] w-[85vw] sm:w-80 flex flex-col border border-cyan-100 mb-4 overflow-hidden transform animate-in slide-in-from-bottom-4 fade-in duration-300">
+            <div className="bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 text-white p-4 flex justify-between items-center">
               <div className="flex items-center gap-2">
                 <div className="bg-white/20 p-1.5 rounded-lg"><Sparkles size={16} /></div>
-                <span className="font-bold text-sm">Rapha'l AI</span>
+                <span className="font-bold text-sm">Rapha'l Assist</span>
               </div>
-              <button onClick={() => setShowChat(false)} className="bg-white/10 hover:bg-white/20 p-1.5 rounded-full transition-colors"><X size={16} /></button>
+              <div className="flex items-center gap-2">
+                <button onClick={() => speak(chatMessages[chatMessages.length - 1]?.text || '')} className="bg-white/10 hover:bg-white/20 p-1.5 rounded-full transition-colors"><Volume2 size={16} /></button>
+                <button onClick={() => setShowChat(false)} className="bg-white/10 hover:bg-white/20 p-1.5 rounded-full transition-colors"><X size={16} /></button>
+              </div>
             </div>
             <div className="h-64 overflow-y-auto p-4 space-y-4 bg-slate-50/50">
               {chatMessages.map((msg, i) => (
                 <div key={i} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] p-3 text-sm shadow-sm ${msg.sender === 'user' ? 'bg-teal-500 text-white rounded-2xl rounded-br-sm' : 'bg-white border border-slate-100 text-slate-700 rounded-2xl rounded-bl-sm font-medium'}`}>
+                  <div className={`max-w-[85%] p-3 text-sm shadow-sm ${msg.sender === 'user' ? 'bg-cyan-500 text-white rounded-2xl rounded-br-sm' : 'bg-white border border-cyan-50 text-slate-700 rounded-2xl rounded-bl-sm font-medium'}`}>
                     {msg.text}
                   </div>
                 </div>
@@ -468,12 +606,13 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
               <div ref={chatEndRef} />
             </div>
             <div className="p-3 bg-white border-t border-slate-100 flex gap-2">
-              <input type="text" placeholder="Type a symptom..." value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendChat()} className="flex-1 bg-slate-100 rounded-xl px-4 py-2 outline-none text-sm focus:ring-2 focus:ring-teal-500/20 focus:bg-white border border-transparent focus:border-teal-200 transition-all" />
-              <button onClick={handleSendChat} className="p-2.5 bg-teal-500 hover:bg-teal-600 text-white rounded-xl transition-colors shadow-md shadow-teal-500/20"><Send size={16} /></button>
+              <button type="button" onClick={toggleVoice} disabled={!voiceSupported} className={`p-2.5 rounded-xl transition-colors ${isListening ? 'bg-red-50 text-red-500' : 'bg-cyan-50 text-cyan-700 hover:bg-cyan-100 disabled:opacity-40'}`}>{isListening ? <MicOff size={16}/> : <Mic size={16}/>}</button>
+              <input type="text" placeholder="Type a symptom..." value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendChat()} className="flex-1 bg-slate-100 rounded-xl px-4 py-2 outline-none text-sm focus:ring-2 focus:ring-cyan-500/20 focus:bg-white border border-transparent focus:border-cyan-200 transition-all" />
+              <button onClick={() => handleSendChat()} className="p-2.5 bg-cyan-500 hover:bg-cyan-600 text-white rounded-xl transition-colors shadow-md shadow-cyan-500/20"><Send size={16} /></button>
             </div>
           </div>
         )}
-        <button onClick={() => setShowChat(!showChat)} className="p-4 rounded-full bg-slate-900 text-white shadow-2xl shadow-slate-900/30 hover:scale-105 active:scale-95 transition-all duration-300">
+        <button onClick={() => setShowChat(!showChat)} className="p-4 rounded-full bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 text-white shadow-2xl shadow-cyan-500/30 hover:scale-105 active:scale-95 transition-all duration-300">
           {showChat ? <X size={24} /> : <MessageSquare size={24} />}
         </button>
       </div>
@@ -495,18 +634,18 @@ function SearchView({ searchQuery, setSearchQuery, doctors, setView, setSelected
   }, [doctors, searchQuery, activeCategory]);
 
   return (
-    <div className="h-full flex flex-col bg-slate-50 min-h-screen pb-24">
-      <div className="sticky top-0 bg-white/80 backdrop-blur-xl z-20 pt-4 pb-3 px-4 border-b border-slate-200/50 shadow-sm">
+    <div className="h-full flex flex-col bg-gradient-to-br from-sky-50 via-white to-emerald-50 min-h-screen pb-24">
+      <div className="sticky top-0 bg-white/90 backdrop-blur-xl z-20 pt-4 pb-3 px-4 border-b border-cyan-100 shadow-sm">
         <div className="flex items-center gap-3 mb-4">
-          <button onClick={() => setView('home')} className="p-2.5 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors text-slate-700"><ChevronLeft size={20}/></button>
+          <button onClick={() => setView('home')} className="p-2.5 bg-cyan-50 hover:bg-cyan-100 rounded-full transition-colors text-cyan-700"><ChevronLeft size={20}/></button>
           <div className="flex-1 relative group">
-            <Search className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-teal-500 transition-colors" size={18} />
-            <input autoFocus type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Find your doctor..." className="w-full bg-slate-100 focus:bg-white border border-transparent focus:border-teal-200 rounded-2xl py-3 pl-11 pr-4 outline-none focus:ring-4 focus:ring-teal-500/10 transition-all font-medium text-sm" />
+            <Search className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-cyan-500 transition-colors" size={18} />
+            <input autoFocus type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Find your doctor..." className="w-full bg-slate-50 focus:bg-white border border-cyan-100 focus:border-cyan-300 rounded-2xl py-3 pl-11 pr-4 outline-none focus:ring-4 focus:ring-cyan-100 transition-all font-medium text-sm" />
           </div>
         </div>
         <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
           {['All', ...Array.from(new Set(Object.values(SYMPTOM_MAP)))].map(cat => (
-            <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-5 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all shadow-sm ${activeCategory === cat ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-300'}`}>{cat}</button>
+            <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-5 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all shadow-sm ${activeCategory === cat ? 'bg-cyan-500 text-white' : 'bg-white text-slate-600 border border-cyan-100 hover:border-cyan-300'}`}>{cat}</button>
           ))}
         </div>
       </div>
@@ -515,12 +654,12 @@ function SearchView({ searchQuery, setSearchQuery, doctors, setView, setSelected
            <div className="text-center py-20 text-slate-400 font-medium">No specialists found for this search.</div>
         )}
         {filteredDoctors.map(doctor => (
-          <div key={doctor.id} onClick={() => { setSelectedDoctor(doctor); setView('detail'); }} className="bg-white p-4 rounded-[1.5rem] shadow-sm hover:shadow-lg border border-slate-100 cursor-pointer flex gap-4 group transition-all duration-300 hover:-translate-y-1">
+          <div key={doctor.id} onClick={() => { setSelectedDoctor(doctor); setView('detail'); }} className="bg-white p-4 rounded-2xl shadow-sm hover:shadow-lg hover:shadow-cyan-500/10 border border-cyan-50 cursor-pointer flex gap-4 group transition-all duration-300 hover:-translate-y-1">
             <Avatar name={doctor.name} url={doctor.image} size="md" />
             <div className="flex-1">
               <div className="flex justify-between items-start">
-                 <h3 className="font-bold text-slate-900 group-hover:text-teal-600 transition-colors">{doctor.name}</h3>
-                 <span className="bg-teal-50 text-teal-700 font-black text-xs px-2 py-1 rounded-lg">{doctor.price}</span>
+                 <h3 className="font-bold text-slate-900 group-hover:text-cyan-700 transition-colors">{doctor.name}</h3>
+                 <span className="bg-cyan-50 text-cyan-700 font-black text-xs px-2 py-1 rounded-lg">{displayAmount(doctor.price)}</span>
               </div>
               <p className="text-xs font-semibold text-slate-500 mb-2">{doctor.specialty}</p>
               <div className="flex items-center gap-4 text-[11px] font-bold text-slate-400">
@@ -538,10 +677,10 @@ function SearchView({ searchQuery, setSearchQuery, doctors, setView, setSelected
 function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, selectedDate, handleBook }) {
   if (!doctor) return null;
   return (
-    <div className="h-full flex flex-col bg-slate-50">
-      <div className="relative h-64 bg-slate-900 shrink-0 rounded-b-[3rem] shadow-lg">
-        <div className="absolute inset-0 bg-gradient-to-br from-teal-800 to-slate-900 rounded-b-[3rem] opacity-90" />
-        <button onClick={() => { setSelectedSlot(null); setView('search'); }} className="absolute top-6 left-6 z-20 p-2.5 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-full text-white transition-colors"><ChevronLeft size={20} /></button>
+    <div className="h-full flex flex-col bg-gradient-to-br from-sky-50 via-white to-emerald-50">
+      <div className="relative h-64 bg-cyan-500 shrink-0 rounded-b-3xl shadow-lg overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-sky-400 via-cyan-500 to-emerald-400" />
+        <button onClick={() => { setSelectedSlot(null); setView('search'); }} className="absolute top-6 left-6 z-20 p-2.5 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-full text-white transition-colors"><ChevronLeft size={20} /></button>
         
         <div className="absolute -bottom-16 left-8 z-20">
            <Avatar name={doctor.name} url={doctor.image} size="lg" />
@@ -553,7 +692,7 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
            <div className="flex justify-between items-start mb-2">
              <h1 className="text-3xl font-black text-slate-900 tracking-tight leading-none">{doctor.name}</h1>
            </div>
-           <p className="text-teal-600 font-bold text-sm mb-4">{doctor.specialty}</p>
+           <p className="text-cyan-700 font-bold text-sm mb-4">{doctor.specialty}</p>
            <div className="flex gap-2">
               <Badge type="success"><Shield size={10} className="inline mr-1"/>Verified</Badge>
               <Badge type="info"><Star size={10} className="inline mr-1"/>{doctor.rating || '5.0'}</Badge>
@@ -568,7 +707,7 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
         <div className="space-y-4">
           <div className="flex justify-between items-center">
              <h3 className="font-black text-lg text-slate-800 flex items-center gap-2">Select Time</h3>
-             <div className="bg-slate-200/50 px-3 py-1 rounded-lg text-xs font-bold text-slate-600">{selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric'})}</div>
+              <div className="bg-cyan-50 px-3 py-1 rounded-lg text-xs font-bold text-cyan-700 border border-cyan-100">{selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric'})}</div>
           </div>
           <div className="grid grid-cols-3 gap-3">
             {doctor.slots?.map(slot => (
@@ -577,8 +716,8 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
                   onClick={() => setSelectedSlot(slot)} 
                   className={`py-3.5 rounded-2xl text-xs font-bold transition-all duration-300 border-2 outline-none focus:ring-4 ${
                     selectedSlot === slot 
-                      ? 'bg-teal-50 border-teal-500 text-teal-700 shadow-sm focus:ring-teal-500/20' 
-                      : 'bg-white border-slate-100 text-slate-500 hover:border-slate-300 hover:bg-slate-50 focus:ring-slate-200'
+                      ? 'bg-cyan-50 border-cyan-500 text-cyan-700 shadow-sm focus:ring-cyan-500/20'
+                      : 'bg-white border-cyan-50 text-slate-500 hover:border-cyan-300 hover:bg-cyan-50/60 focus:ring-cyan-100'
                   }`}
                 >
                   {slot}
@@ -589,12 +728,12 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
       </div>
       
       {/* Floating Action Area */}
-      <div className="absolute bottom-0 left-0 w-full bg-white/80 backdrop-blur-xl border-t border-slate-200/50 p-6 pb-8 z-30 shadow-[0_-20px_40px_rgba(0,0,0,0.05)] rounded-t-[2.5rem]">
+      <div className="absolute bottom-0 left-0 w-full bg-white/90 backdrop-blur-xl border-t border-cyan-100 p-6 pb-8 z-30 shadow-[0_-20px_50px_rgba(14,165,233,0.10)] rounded-t-3xl">
         <div className="flex justify-between items-center mb-4 px-2">
            <span className="text-sm font-bold text-slate-500">Consultation Fee</span>
-           <span className="text-2xl font-black text-teal-600">{doctor.price}</span>
+           <span className="text-2xl font-black text-cyan-700">{displayAmount(doctor.price)}</span>
         </div>
-        <Button className="w-full shadow-teal-500/40" onClick={handleBook} disabled={!selectedSlot}>
+        <Button className="w-full shadow-cyan-500/30" onClick={handleBook} disabled={!selectedSlot}>
            {selectedSlot ? `Confirm Booking for ${selectedSlot}` : 'Select a Time Slot'}
         </Button>
       </div>
@@ -604,30 +743,30 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
 
 function DashboardView({ appointments, onPayNow, onPayCash }) {
   if (!appointments.length) return (
-    <div className="p-8 text-center flex flex-col items-center justify-center h-full bg-slate-50 pb-24">
-      <div className="w-24 h-24 bg-teal-50 rounded-full flex items-center justify-center mb-6"><Calendar size={40} className="text-teal-400" /></div>
+    <div className="p-8 text-center flex flex-col items-center justify-center h-full bg-gradient-to-br from-sky-50 via-white to-emerald-50 pb-24">
+      <div className="w-24 h-24 bg-cyan-50 rounded-full flex items-center justify-center mb-6 border border-cyan-100"><Calendar size={40} className="text-cyan-400" /></div>
       <h2 className="text-2xl font-black text-slate-800 mb-2">No Visits Yet</h2>
       <p className="text-slate-500 font-medium text-sm">Your upcoming appointments will appear here.</p>
     </div>
   );
   
   return (
-    <div className="p-6 space-y-6 bg-slate-50 min-h-full pb-32">
+    <div className="p-6 space-y-6 bg-gradient-to-br from-sky-50 via-white to-emerald-50 min-h-full pb-32">
        <div className="flex items-center gap-3 mb-2">
-         <div className="p-2 bg-teal-100 text-teal-600 rounded-xl"><Activity size={20} /></div>
+         <div className="p-2 bg-cyan-100 text-cyan-700 rounded-xl"><Activity size={20} /></div>
          <h2 className="text-2xl font-black text-slate-800">My Visits</h2>
        </div>
        
        {appointments.map(apt => {
          const isAwaitingPayment = apt.status === 'Accepted' && apt.payment_status === 'Unpaid';
          return (
-           <div key={apt.id} className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
+           <div key={apt.id} className="bg-white rounded-2xl p-6 shadow-sm border border-cyan-50 hover:shadow-md hover:shadow-cyan-500/10 transition-shadow">
              <div className="flex justify-between items-start mb-6">
                <div>
-                 <h3 className="text-lg font-black text-slate-900 group-hover:text-teal-600">{apt.doctor_name}</h3>
+                 <h3 className="text-lg font-black text-slate-900 group-hover:text-cyan-700">{apt.doctor_name}</h3>
                  <span className={`inline-flex items-center gap-1 text-[10px] uppercase font-black px-2.5 py-1 rounded-lg mt-2 ${
                     apt.status === 'Confirmed' ? 'bg-emerald-50 text-emerald-600' :
-                    apt.status === 'Accepted' ? 'bg-teal-50 text-teal-600' :
+                    apt.status === 'Accepted' ? 'bg-cyan-50 text-cyan-700' :
                     apt.status === 'Cancelled' ? 'bg-red-50 text-red-600' :
                     'bg-amber-50 text-amber-600'
                  }`}>{apt.status}</span>
@@ -639,8 +778,8 @@ function DashboardView({ appointments, onPayNow, onPayCash }) {
              </div>
              
              <div className="flex gap-6 mb-2 text-sm font-bold text-slate-500 bg-slate-50 p-4 rounded-2xl">
-                <span className="flex items-center gap-2"><Clock size={16} className="text-teal-500"/> {apt.slot}</span>
-                <span className="flex items-center gap-2"><IndianRupee size={16} className="text-teal-500"/> {apt.amount?.toString().replace(/\D/g, '')}</span>
+                <span className="flex items-center gap-2"><Clock size={16} className="text-cyan-500"/> {apt.slot}</span>
+                <span className="flex items-center gap-2"><IndianRupee size={16} className="text-cyan-500"/> {displayAmount(apt.amount)}</span>
              </div>
              
              {isAwaitingPayment && (
@@ -658,18 +797,17 @@ function DashboardView({ appointments, onPayNow, onPayCash }) {
 
 function ProfileView({ user, logout }) {
   return (
-    <div className="h-full flex flex-col p-6 overflow-y-auto bg-slate-50 pb-24">
+    <div className="h-full flex flex-col p-6 overflow-y-auto bg-gradient-to-br from-sky-50 via-white to-emerald-50 pb-24">
       <div className="flex items-center gap-3 mb-8">
-         <div className="p-2 bg-slate-200 text-slate-700 rounded-xl"><User size={20} /></div>
+         <div className="p-2 bg-cyan-100 text-cyan-700 rounded-xl"><User size={20} /></div>
          <h1 className="text-2xl font-black text-slate-900">My Profile</h1>
       </div>
 
-      <div className="bg-white p-8 rounded-[2rem] border border-slate-100 shadow-sm space-y-6 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-bl-full -mr-10 -mt-10 pointer-events-none"></div>
+      <div className="bg-white p-8 rounded-2xl border border-cyan-50 shadow-sm space-y-6 relative overflow-hidden">
         
         <div className="relative z-10 space-y-6">
           <div className="flex items-center gap-4 mb-8">
-            <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 font-bold text-2xl border-2 border-white shadow-md">
+            <div className="w-16 h-16 rounded-2xl bg-cyan-50 flex items-center justify-center text-cyan-700 font-bold text-2xl border-2 border-white shadow-md">
               {user?.name?.charAt(0).toUpperCase()}
             </div>
             <div>
@@ -681,11 +819,11 @@ function ProfileView({ user, logout }) {
           <div className="space-y-4">
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Full Name</label>
-              <div className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 text-slate-800 font-bold text-sm">{user?.name || 'N/A'}</div>
+              <div className="w-full bg-slate-50 border border-cyan-50 rounded-2xl px-5 py-4 text-slate-800 font-bold text-sm">{user?.name || 'N/A'}</div>
             </div>
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Email Address</label>
-              <div className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 text-slate-800 font-bold text-sm">{user?.email || 'N/A'}</div>
+              <div className="w-full bg-slate-50 border border-cyan-50 rounded-2xl px-5 py-4 text-slate-800 font-bold text-sm">{user?.email || 'N/A'}</div>
             </div>
           </div>
           
@@ -716,17 +854,22 @@ function DoctorDashboard({ user, logout, showToast }) {
   const handleAction = async (id, action) => {
     const status = action === 'accept' ? 'Accepted' : 'Cancelled';
     const { error } = await supabase.from('appointments').update({ status }).eq('id', id);
-    if (!error) showToast(action === 'accept' ? "Appointment Confirmed" : "Appointment Declined");
+    if (!error) {
+      setAppointments(prev => prev.map(apt => apt.id === id ? { ...apt, status } : apt));
+      showToast(action === 'accept' ? "Appointment accepted" : "Appointment declined");
+    } else {
+      showToast(error.message || 'Unable to update appointment.', 'error');
+    }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6 font-sans">
-      <div className="flex justify-between items-center mb-10 bg-white p-4 rounded-3xl shadow-sm border border-slate-100">
+    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-emerald-50 p-6 font-sans">
+      <div className="flex justify-between items-center mb-10 bg-white p-4 rounded-2xl shadow-sm border border-cyan-50">
         <div className="flex items-center gap-3">
           <Avatar name={user?.name} size="sm" />
           <div>
             <h1 className="text-lg font-black text-slate-900 leading-tight">Dr. {user?.name}</h1>
-            <span className="text-xs font-bold text-teal-600">Provider Console</span>
+            <span className="text-xs font-bold text-cyan-700">Provider Console</span>
           </div>
         </div>
         <button onClick={logout} className="p-3 bg-red-50 text-red-600 rounded-2xl hover:bg-red-100 transition-colors"><LogOut size={18} /></button>
@@ -735,7 +878,7 @@ function DoctorDashboard({ user, logout, showToast }) {
       <div className="space-y-6">
         <h2 className="text-xl font-black text-slate-800">Requests ({appointments.filter(a => a.status === 'Pending Approval').length})</h2>
         {appointments.filter(a => a.status === 'Pending Approval').map(apt => (
-          <div key={apt.id} className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200/60">
+          <div key={apt.id} className="bg-white p-6 rounded-2xl shadow-sm border border-cyan-50">
             <h3 className="font-black text-lg text-slate-800 mb-1">{apt.patient_name}</h3>
             <p className="text-sm font-bold text-slate-500 mb-6 flex items-center gap-2"><Calendar size={14}/> {new Date(apt.appointment_date).toLocaleDateString()} at {apt.slot}</p>
             <div className="flex gap-3">
@@ -745,7 +888,7 @@ function DoctorDashboard({ user, logout, showToast }) {
           </div>
         ))}
         {appointments.length === 0 && (
-          <div className="text-center py-10 bg-white rounded-[2rem] border border-dashed border-slate-200">
+          <div className="text-center py-10 bg-white rounded-2xl border border-dashed border-cyan-200">
             <p className="text-slate-400 font-bold">No new appointments.</p>
           </div>
         )}
@@ -756,19 +899,19 @@ function DoctorDashboard({ user, logout, showToast }) {
 
 function AdminDashboard({ logout, doctors }) {
   return (
-    <div className="min-h-screen bg-slate-950 text-white p-6 font-sans">
+    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-emerald-50 text-slate-900 p-6 font-sans">
       <div className="flex justify-between items-center mb-10">
-        <h1 className="text-2xl font-black flex items-center gap-2 tracking-tight"><Shield className="text-teal-400"/> System Admin</h1>
-        <button onClick={logout} className="p-3 bg-white/10 text-white rounded-2xl hover:bg-white/20 transition-colors"><LogOut size={18} /></button>
+        <h1 className="text-2xl font-black flex items-center gap-2 tracking-tight"><Shield className="text-cyan-600"/> System Admin</h1>
+        <button onClick={logout} className="p-3 bg-red-50 text-red-600 rounded-2xl hover:bg-red-100 transition-colors"><LogOut size={18} /></button>
       </div>
-      <div className="bg-white/5 border border-white/10 p-6 rounded-[2rem] backdrop-blur-xl">
-        <h2 className="text-lg font-bold mb-6 text-slate-300">Registered Providers ({doctors.length})</h2>
+      <div className="bg-white border border-cyan-50 p-6 rounded-2xl shadow-sm">
+        <h2 className="text-lg font-bold mb-6 text-slate-700">Registered Providers ({doctors.length})</h2>
         <div className="space-y-3">
           {doctors.map(doc => (
-            <div key={doc.id} className="bg-slate-900/50 p-5 rounded-2xl border border-slate-700/50 flex justify-between items-center hover:border-teal-500/50 transition-colors">
+            <div key={doc.id} className="bg-slate-50 p-5 rounded-2xl border border-cyan-50 flex justify-between items-center hover:border-cyan-200 transition-colors">
               <div>
-                <h3 className="font-bold text-white text-lg">{doc.name}</h3>
-                <p className="text-sm font-medium text-teal-400">{doc.specialty}</p>
+                <h3 className="font-bold text-slate-900 text-lg">{doc.name}</h3>
+                <p className="text-sm font-medium text-cyan-700">{doc.specialty}</p>
               </div>
               <ChevronRight size={20} className="text-slate-500" />
             </div>
@@ -791,7 +934,7 @@ export default function App() {
   const [activeCategory, setActiveCategory] = useState('All');
   const [selectedDoctor, setSelectedDoctor] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
-  const selectedDate = new Date(); 
+  const selectedDate = useMemo(() => new Date(), []);
   const [notification, setNotification] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
 
@@ -813,16 +956,18 @@ export default function App() {
            return;
         }
 
-        const { data: profile } = await supabase.from('users').select().eq('id', sessionUser.id).single();
-        if (profile && active) {
-           if (profile.role === 'doctor') {
-              const { data: docData } = await supabase.from('doctors').select().eq('name', profile.name).single();
-              if (docData) profile.doctorId = docData.id;
+        try {
+           const profile = await loadUserProfile(sessionUser);
+           if (profile && active) {
+              setUser(profile);
+              setView(routeForRole(profile.role));
            }
-           setUser(profile);
-           if (profile.role === 'admin') setView('admin');
-           else if (profile.role === 'doctor') setView('doctor_dashboard');
-           else setView('home');
+        } catch (err) {
+           if (active) {
+              showToast(err.message || 'Unable to load your profile.', 'error');
+              setUser(null);
+              setView('login');
+           }
         }
         if (active) setLoadingAuth(false);
      };
@@ -847,7 +992,7 @@ export default function App() {
         active = false; 
         subscription.unsubscribe(); 
      };
-  }, []);
+  }, [showToast]);
 
   const fetchPatientAppointments = useCallback(async () => {
      if (user?.id) {
@@ -870,9 +1015,7 @@ export default function App() {
 
   const handleLogin = (userData) => {
      setUser(userData);
-     if (userData.role === 'admin') setView('admin');
-     else if (userData.role === 'doctor') setView('doctor_dashboard');
-     else setView('home');
+     setView(routeForRole(userData.role));
   };
 
   const handleLogout = async () => {
@@ -892,7 +1035,7 @@ export default function App() {
          appointment_date: selectedDate.toISOString(),
          status: 'Pending Approval',
          payment_status: 'Unpaid',
-         amount: selectedDoctor.price || '500'
+         amount: displayAmount(selectedDoctor.price)
      };
      const { error } = await supabase.from('appointments').insert([appt]);
      if (!error) {
@@ -908,30 +1051,58 @@ export default function App() {
      if (!error) {
          showToast("Selected Cash. Please pay at the clinic.", "info");
          fetchPatientAppointments();
+     } else {
+         showToast(error.message || "Unable to update payment mode.", "error");
      }
   };
 
   const handlePayNow = async (appt) => {
-      showToast("UPI verified for testing purposes.", "success");
-      const { error } = await supabase.from('appointments').update({ payment_mode: 'UPI', payment_status: 'Verified & Paid', status: 'Confirmed' }).eq('id', appt.id);
-      if (!error) fetchPatientAppointments();
+      const { data: doctor } = await supabase
+        .from('doctors')
+        .select('name, upi_id')
+        .eq('id', appt.doctor_id)
+        .maybeSingle();
+      const amount = numericAmount(appt.amount);
+      const upiId = doctor?.upi_id;
+
+      if (upiId) {
+        const params = new URLSearchParams({
+          pa: upiId,
+          pn: doctor?.name || appt.doctor_name || 'Raphael Doctor',
+          am: amount.toString(),
+          cu: 'INR',
+          tn: `Raphael appointment ${appt.id}`,
+        });
+        window.location.href = `upi://pay?${params.toString()}`;
+      }
+
+      const { error } = await supabase
+        .from('appointments')
+        .update({ payment_mode: 'UPI', payment_status: 'Pending Verification' })
+        .eq('id', appt.id);
+      if (!error) {
+        showToast(upiId ? "UPI opened. Payment is pending verification." : "Payment marked for verification.", "info");
+        fetchPatientAppointments();
+      } else {
+        showToast(error.message || "Unable to start payment.", "error");
+      }
   };
 
   if (loadingAuth) {
-     return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-teal-500" size={40} strokeWidth={3} /></div>;
+     return <div className="min-h-screen flex items-center justify-center bg-sky-50"><Loader2 className="animate-spin text-cyan-500" size={40} strokeWidth={3} /></div>;
   }
 
   return (
-     <div className="min-h-screen bg-slate-100 font-sans text-slate-900 flex justify-center selection:bg-teal-100 relative">
+     <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-emerald-50 font-sans text-slate-900 flex justify-center selection:bg-cyan-100 relative">
         {/* Dynamic Island Toast */}
         {notification && (
-          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] bg-slate-900/95 backdrop-blur-xl border border-slate-700/50 text-white px-5 py-3 rounded-full shadow-[0_10px_40px_rgba(0,0,0,0.2)] flex items-center gap-3 animate-in slide-in-from-top-10 fade-in duration-300">
-            {notification.type === 'error' ? <X Circle size={18} className="text-red-400" /> : <CheckCircle size={18} className={notification.type === 'info' ? "text-blue-400" : "text-teal-400"} />}
+          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] bg-white/95 backdrop-blur-xl border border-cyan-100 text-slate-900 px-5 py-3 rounded-full shadow-[0_18px_50px_rgba(14,165,233,0.18)] flex items-center gap-3 animate-in slide-in-from-top-10 fade-in duration-300">
+            {notification.type === 'error' ? <X size={18} className="text-red-500" /> : <CheckCircle size={18} className={notification.type === 'info' ? "text-sky-500" : "text-emerald-500"} />}
             <span className="text-sm font-bold tracking-wide">{notification.msg}</span>
           </div>
         )}
 
-        <div className="w-full max-w-md bg-white min-h-screen relative shadow-2xl overflow-hidden flex flex-col">
+        <div className="w-full max-w-md bg-white min-h-screen relative shadow-[0_30px_100px_-55px_rgba(14,165,233,0.65)] overflow-hidden flex flex-col">
            {view === 'login' && <LoginView onLogin={handleLogin} showToast={showToast} />}
            {view === 'admin' && <AdminDashboard logout={handleLogout} doctors={doctors} />}
            {view === 'doctor_dashboard' && <DoctorDashboard user={user} logout={handleLogout} showToast={showToast} />}
@@ -958,7 +1129,7 @@ export default function App() {
                  {/* Premium Floating iOS-style Bottom Nav */}
                  {!['detail', 'success', 'login'].includes(view) && (
                     <div className="absolute bottom-0 w-full px-6 pb-6 pt-2 z-40 pointer-events-none">
-                       <div className="bg-slate-900/90 backdrop-blur-2xl border border-slate-700/50 p-2 rounded-[2rem] flex justify-around items-center shadow-[0_20px_40px_rgba(0,0,0,0.3)] pointer-events-auto">
+                       <div className="bg-white/95 backdrop-blur-2xl border border-cyan-100 p-2 rounded-3xl flex justify-around items-center shadow-[0_20px_50px_rgba(14,165,233,0.18)] pointer-events-auto">
                          {[
                            { id: 'home', icon: Zap, label: 'Home' },
                            { id: 'search', icon: Search, label: 'Search' },
@@ -968,11 +1139,11 @@ export default function App() {
                            <button 
                              key={item.id} 
                              onClick={() => setView(item.id)} 
-                             className={`relative flex flex-col items-center gap-1 w-16 py-2 rounded-2xl transition-all duration-300 ${view === item.id ? 'text-teal-400' : 'text-slate-500 hover:text-slate-300'}`}
+                             className={`relative flex flex-col items-center gap-1 w-16 py-2 rounded-2xl transition-all duration-300 ${view === item.id ? 'text-cyan-600 bg-cyan-50' : 'text-slate-500 hover:text-cyan-700'}`}
                            >
                              <item.icon size={22} strokeWidth={view === item.id ? 2.5 : 2} className={view === item.id ? 'animate-in zoom-in-75 duration-200' : ''} />
                              <span className="text-[9px] font-extrabold uppercase tracking-wider">{item.label}</span>
-                             {view === item.id && <div className="absolute -top-1 w-8 h-1 bg-teal-500 rounded-full blur-[2px]"></div>}
+                             {view === item.id && <div className="absolute -top-1 w-8 h-1 bg-cyan-400 rounded-full"></div>}
                            </button>
                          ))}
                        </div>
