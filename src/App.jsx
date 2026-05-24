@@ -1,17 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { createClient } from '@supabase/supabase-js';
 import {
   Search, Calendar, Clock, MapPin, Star, Shield, Activity, User, CheckCircle, X,
   ArrowRight, Loader2, EyeOff, Check, LogOut, MessageSquare, Send, 
-  ChevronLeft, IndianRupee, Zap, Mail, Lock, Sparkles, ChevronRight, Phone
+  ChevronLeft, IndianRupee, Zap, Mail, Lock, Sparkles, ChevronRight
 } from 'lucide-react';
-
-// ==========================================
-// GLOBAL CONFIGURATION & SUPABASE SETUP
-// ==========================================
-const supabaseUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || "https://wogynpamaclqouzyllgn.supabase.co";
-const supabaseAnonKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) || "sb_publishable_OdSAp_DAPXo_3kzaC3knLA_D1UVW1QN";
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import { supabase } from './lib/supabaseClient';
 
 const SYMPTOM_MAP = {
   head: 'Neurologist', migraine: 'Neurologist', brain: 'Neurologist',
@@ -22,17 +15,86 @@ const SYMPTOM_MAP = {
   eye: 'Ophthalmologist', vision: 'Ophthalmologist',
 };
 
+const USER_PROFILE_FIELDS = 'id, email, name, role, phone, district';
+
+const routeForRole = (role) => {
+  if (role === 'admin') return 'admin';
+  if (role === 'doctor') return 'doctor_dashboard';
+  return 'home';
+};
+
+const profileFromAuthUser = (authUser) => ({
+  id: authUser.id,
+  email: authUser.email,
+  name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'Patient',
+  role: authUser.user_metadata?.role || 'patient',
+  phone: authUser.user_metadata?.phone || '',
+  district: authUser.user_metadata?.district || 'Dimapur',
+});
+
+const attachDoctorProfile = async (profile) => {
+  if (profile?.role !== 'doctor') return profile;
+  const { data: docProfile } = await supabase
+    .from('doctors')
+    .select('id')
+    .eq('name', profile.name)
+    .maybeSingle();
+  return docProfile ? { ...profile, doctorId: docProfile.id } : profile;
+};
+
+const loadUserProfile = async (authUser) => {
+  if (!authUser) return null;
+
+  let { data: profile, error } = await supabase
+    .from('users')
+    .select(USER_PROFILE_FIELDS)
+    .eq('id', authUser.id)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  if (!profile && authUser.email) {
+    const { data: emailProfile, error: emailError } = await supabase
+      .from('users')
+      .select(USER_PROFILE_FIELDS)
+      .eq('email', authUser.email)
+      .maybeSingle();
+    if (emailError) throw emailError;
+    profile = emailProfile;
+  }
+
+  return attachDoctorProfile(profile || profileFromAuthUser(authUser));
+};
+
+const saveUserProfile = async (authUser, profileInput) => {
+  const profile = {
+    ...profileFromAuthUser(authUser),
+    ...profileInput,
+    id: authUser.id,
+    email: authUser.email,
+  };
+
+  const { data, error } = await supabase
+    .from('users')
+    .upsert(profile, { onConflict: 'id' })
+    .select(USER_PROFILE_FIELDS)
+    .single();
+
+  if (error) throw error;
+  return attachDoctorProfile(data);
+};
+
 // ==========================================
 // PREMIUM UI COMPONENTS
 // ==========================================
 const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false }) => {
-  const baseStyle = "px-6 py-3.5 rounded-2xl font-bold transition-all duration-300 transform active:scale-95 flex items-center justify-center gap-2 outline-none focus:ring-4";
+  const baseStyle = "px-6 py-3.5 rounded-xl font-bold transition-all duration-200 transform active:scale-[0.98] flex items-center justify-center gap-2 outline-none focus:ring-4";
   const variants = {
-    primary: "bg-gradient-to-r from-teal-500 to-emerald-500 text-white shadow-lg shadow-teal-500/30 hover:shadow-teal-500/50 hover:from-teal-400 hover:to-emerald-400 focus:ring-teal-500/20",
-    secondary: "bg-white text-slate-800 border border-slate-200 shadow-sm hover:border-teal-200 hover:bg-slate-50 focus:ring-slate-100",
+    primary: "bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 text-white shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/35 hover:brightness-105 focus:ring-cyan-500/20",
+    secondary: "bg-white text-slate-800 border border-slate-200 shadow-sm hover:border-cyan-200 hover:bg-cyan-50/50 focus:ring-cyan-100",
     danger: "bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 focus:ring-red-100",
-    ghost: "bg-transparent text-slate-500 hover:text-teal-600 hover:bg-teal-50 focus:ring-teal-50",
-    outline: "bg-transparent border-2 border-slate-200 text-slate-600 hover:border-teal-500 hover:text-teal-600 focus:ring-teal-100"
+    ghost: "bg-transparent text-slate-500 hover:text-cyan-700 hover:bg-cyan-50 focus:ring-cyan-50",
+    outline: "bg-transparent border-2 border-slate-200 text-slate-600 hover:border-cyan-500 hover:text-cyan-700 focus:ring-cyan-100"
   };
   return (
     <button onClick={onClick} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${disabled ? 'opacity-50 cursor-not-allowed saturate-50' : ''} ${className}`}>
@@ -43,9 +105,9 @@ const Button = ({ children, onClick, variant = 'primary', className = '', disabl
 
 const Badge = ({ children, type = 'info' }) => {
   const styles = {
-    info: "bg-teal-50 text-teal-700 border border-teal-100/50",
-    success: "bg-emerald-50 text-emerald-700 border border-emerald-100/50",
-    warning: "bg-amber-50 text-amber-700 border border-amber-100/50"
+    info: "bg-sky-50 text-sky-700 border border-sky-100",
+    success: "bg-emerald-50 text-emerald-700 border border-emerald-100",
+    warning: "bg-amber-50 text-amber-700 border border-amber-100"
   };
   return (
     <span className={`px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-widest shadow-sm ${styles[type]}`}>
@@ -58,10 +120,10 @@ const Avatar = ({ name, url, size = "md" }) => {
   const sizes = { sm: "w-10 h-10 text-sm", md: "w-14 h-14 text-xl", lg: "w-24 h-24 text-4xl" };
   const initial = name ? name.replace('Dr. ', '').charAt(0).toUpperCase() : 'D';
   
-  if (url) return <img src={url} alt={name} className={`${sizes[size]} rounded-2xl object-cover shadow-md`} />;
+  if (url) return <img src={url} alt={name} className={`${sizes[size]} rounded-2xl object-cover shadow-md ring-2 ring-white`} />;
   
   return (
-    <div className={`${sizes[size]} rounded-2xl bg-gradient-to-br from-teal-50 to-emerald-50 border border-teal-100/50 flex items-center justify-center text-teal-600 font-black shadow-inner relative group`}>
+    <div className={`${sizes[size]} rounded-2xl bg-gradient-to-br from-sky-50 via-white to-emerald-50 border border-cyan-100 flex items-center justify-center text-cyan-700 font-black shadow-inner relative group`}>
       {initial}
       <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full shadow-sm"></div>
     </div>
@@ -76,6 +138,7 @@ function LoginView({ onLogin, showToast }) {
   const [mode, setMode] = useState('login'); 
   const [isVisible, setIsVisible] = useState(false); 
   const [email, setEmail] = useState('');
+  const [resetEmail, setResetEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState('');
@@ -97,78 +160,139 @@ function LoginView({ onLogin, showToast }) {
     setLoading(true);
     setError('');
     try {
-      const { data, error: loginError } = await supabase.from('users').select().eq('email', email).eq('password', password).single();
-      if (loginError || !data) throw new Error("Invalid email or password.");
-      if (data.role === 'doctor') {
-        const { data: docProfile } = await supabase.from('doctors').select().eq('name', data.name).single();
-        if (docProfile) data.doctorId = docProfile.id;
-      }
-      onLogin(data);
+      const { data, error: loginError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (loginError) throw loginError;
+
+      const profile = await loadUserProfile(data.user);
+      onLogin(profile);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Unable to sign in. Please check your details.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRegisterSubmit = async () => {
+  const handleRegisterSubmit = async (e) => {
+    e?.preventDefault();
+    if (!name.trim() || !email.trim() || !password) {
+      setError('Please fill in your name, email, and password.');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
+    if (role === 'doctor') {
+      if (!price || Number(price) <= 0) {
+        setError('Doctors must set a valid consultation fee.');
+        return;
+      }
+      if (!doctorUpi.trim()) {
+        setError('Doctors must provide a UPI ID for payouts.');
+        return;
+      }
+    }
+
     setLoading(true);
+    setError('');
     try {
-      const { data: existing } = await supabase.from('users').select().eq('email', email).single();
-      if (existing) throw new Error("Email already registered.");
-      const { data: newUser, error: insertError } = await supabase.from('users').insert([{ email, password, name, role, phone, district: 'Dimapur' }]).select().single();
-      if (insertError) throw insertError;
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          data: {
+            name: name.trim(),
+            role,
+            phone: phone.trim(),
+            district: 'Dimapur',
+          },
+        },
+      });
+      if (signUpError) throw signUpError;
+      if (!data.user) throw new Error('Unable to create account. Please try again.');
       
-      let currentUser = newUser;
+      let currentUser = await saveUserProfile(data.user, {
+        name: name.trim(),
+        role,
+        phone: phone.trim(),
+        district: 'Dimapur',
+      });
       if (role === 'doctor') {
+         const fee = Number(price);
          const { data: docData, error: docError } = await supabase.from('doctors').insert([{ 
-             name, specialty, rating: 5.0, reviews: 0, image: '', 
+             name: name.trim(), specialty, rating: 5.0, reviews: 0, image: '', 
              location: 'Online', experience: '1 Year', bio: 'New specialist at Rapha\'l.', 
-             price: `₹${price}`, slots: ['09:00 AM', '10:00 AM', '02:00 PM'], upi_id: doctorUpi 
+             price: `Rs. ${fee}`, slots: ['09:00 AM', '10:00 AM', '02:00 PM'], upi_id: doctorUpi.trim() 
          }]).select().single();
          if (docError) throw new Error("Failed to create doctor profile.");
          currentUser.doctorId = docData.id;
       }
-      if(showToast) showToast(`Welcome to Rapha'l, ${name}!`);
-      onLogin(currentUser);
+      if (data.session) {
+        if(showToast) showToast(`Welcome to Rapha'l, ${name.trim()}!`);
+        onLogin(currentUser);
+      } else {
+        if(showToast) showToast('Account created. Please confirm your email before signing in.', 'info');
+        setMode('login');
+      }
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Unable to create account right now.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePasswordReset = async (e) => {
+    e.preventDefault();
+    const targetEmail = (resetEmail || email).trim();
+    if (!targetEmail) {
+      setError('Enter your email address first.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(targetEmail, {
+        redirectTo: window.location.origin,
+      });
+      if (resetError) throw resetError;
+      if (showToast) showToast('Password reset email sent.', 'info');
+      setMode('login');
+    } catch (err) {
+      setError(err.message || 'Unable to send reset email.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans">
-      {/* Decorative Background Blur */}
-      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
-        <div className="absolute -top-[20%] -left-[10%] w-[70vw] h-[70vw] rounded-full bg-teal-600/20 blur-[120px]"></div>
-        <div className="absolute top-[40%] -right-[20%] w-[60vw] h-[60vw] rounded-full bg-emerald-600/20 blur-[100px]"></div>
-      </div>
-
-      <div className={`w-full max-w-md bg-white/[0.03] backdrop-blur-3xl border border-white/10 p-8 sm:p-10 rounded-[2.5rem] shadow-[0_8px_32px_0_rgba(0,0,0,0.37)] z-10 transition-all duration-1000 transform ${isVisible ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-12 opacity-0 scale-95'}`}>
+    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-emerald-50 flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans">
+      <div className={`w-full max-w-md bg-white border border-cyan-100 p-8 sm:p-10 rounded-3xl shadow-[0_24px_80px_-36px_rgba(14,165,233,0.55)] z-10 transition-all duration-700 transform ${isVisible ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-10 opacity-0 scale-95'}`}>
         <div className="text-center mb-10">
-          <div className="w-20 h-20 bg-gradient-to-br from-teal-400 to-emerald-500 rounded-3xl mx-auto flex items-center justify-center mb-6 shadow-xl shadow-teal-500/20 transform hover:rotate-12 transition-transform duration-500">
+          <div className="w-20 h-20 bg-gradient-to-br from-sky-400 via-cyan-400 to-emerald-400 rounded-3xl mx-auto flex items-center justify-center mb-6 shadow-xl shadow-cyan-500/25 transform hover:rotate-6 transition-transform duration-500">
              <Shield className="text-white" size={36} strokeWidth={2.5} />
           </div>
-          <h1 className="text-4xl sm:text-5xl font-black text-white mb-3 tracking-tight">Rapha'l</h1>
-          <p className="text-teal-400 text-xs font-black tracking-[0.3em] uppercase">Premium Healthcare</p>
+          <h1 className="text-4xl sm:text-5xl font-black text-slate-950 mb-3 tracking-tight">Rapha'l</h1>
+          <p className="text-cyan-600 text-xs font-black tracking-[0.3em] uppercase">Bright Healthcare Access</p>
         </div>
 
         {mode === 'login' ? (
           <form onSubmit={handleLoginSubmit} className="space-y-5">
             <div className="space-y-4">
               <div className="group relative">
-                  <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none transition-colors group-focus-within:text-teal-400 text-slate-500"><Mail size={18} /></div>
-                  <input type="email" placeholder="Email Address" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700/50 rounded-2xl pl-12 pr-5 py-4 text-white placeholder-slate-500 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition-all" required />
+                  <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none transition-colors group-focus-within:text-cyan-500 text-slate-400"><Mail size={18} /></div>
+                  <input type="email" placeholder="Email Address" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-5 py-4 text-slate-900 placeholder-slate-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 outline-none transition-all" required />
               </div>
               <div className="group relative">
-                  <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none transition-colors group-focus-within:text-teal-400 text-slate-500"><Lock size={18} /></div>
-                  <input type={showPassword ? "text" : "password"} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700/50 rounded-2xl pl-12 pr-12 py-4 text-white placeholder-slate-500 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none transition-all" required />
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-5 top-1/2 transform -translate-y-1/2 text-slate-500 hover:text-teal-400 transition-colors"><EyeOff size={18} /></button>
+                  <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none transition-colors group-focus-within:text-cyan-500 text-slate-400"><Lock size={18} /></div>
+                  <input type={showPassword ? "text" : "password"} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-12 py-4 text-slate-900 placeholder-slate-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 outline-none transition-all" required />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-5 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-cyan-600 transition-colors"><EyeOff size={18} /></button>
               </div>
             </div>
-            {error && <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-semibold text-center py-3 rounded-xl backdrop-blur-sm animate-pulse">{error}</div>}
+            {error && <div className="bg-red-50 border border-red-100 text-red-600 text-xs font-semibold text-center py-3 rounded-xl">{error}</div>}
             
             <div className="pt-2">
               <Button className="w-full py-4 text-lg" disabled={loading}>
@@ -176,40 +300,61 @@ function LoginView({ onLogin, showToast }) {
               </Button>
             </div>
             
-            <button type="button" onClick={() => setMode('register')} className="w-full text-center mt-6 text-slate-400 text-sm hover:text-white transition-colors flex items-center justify-center gap-2 group font-medium">
+            <button type="button" onClick={() => setMode('forgot')} className="w-full text-center text-cyan-700 text-sm hover:text-cyan-900 transition-colors font-bold">
+                Forgot password?
+            </button>
+            <button type="button" onClick={() => setMode('register')} className="w-full text-center mt-4 text-slate-500 text-sm hover:text-cyan-700 transition-colors flex items-center justify-center gap-2 group font-medium">
                 Create new account <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+            </button>
+          </form>
+        ) : mode === 'forgot' ? (
+          <form onSubmit={handlePasswordReset} className="space-y-5">
+            <div className="space-y-2 text-center">
+              <h2 className="text-xl font-black text-slate-900">Reset your password</h2>
+              <p className="text-sm font-medium text-slate-500">We will send a secure reset link to your email.</p>
+            </div>
+            <div className="group relative">
+              <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none transition-colors group-focus-within:text-cyan-500 text-slate-400"><Mail size={18} /></div>
+              <input type="email" placeholder="Email Address" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-5 py-4 text-slate-900 placeholder-slate-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 outline-none transition-all" required />
+            </div>
+            {error && <div className="bg-red-50 border border-red-100 text-red-600 text-xs font-semibold text-center py-3 rounded-xl">{error}</div>}
+            <Button className="w-full py-4 text-lg" disabled={loading}>
+              {loading ? <Loader2 className="animate-spin" /> : "Send Reset Link"}
+            </Button>
+            <button type="button" onClick={() => setMode('login')} className="w-full text-center pt-2 text-slate-500 text-sm hover:text-cyan-700 transition-colors">
+              Back to sign in
             </button>
           </form>
         ) : (
            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-              <div className="flex p-1 bg-slate-900/50 rounded-2xl border border-slate-700/50 backdrop-blur-sm">
+              <div className="flex p-1 bg-slate-100 rounded-2xl border border-slate-200">
                 {['patient', 'doctor'].map(r => (
-                  <button key={r} onClick={() => setRole(r)} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-300 ${role === r ? 'bg-teal-500 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>{r}</button>
+                  <button key={r} onClick={() => setRole(r)} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-300 ${role === r ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/20' : 'text-slate-500 hover:text-cyan-700'}`}>{r}</button>
                 ))}
               </div>
               
-              <input type="text" placeholder="Full Name" value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700/50 rounded-2xl px-5 py-4 text-white placeholder-slate-500 focus:border-teal-500 outline-none transition-all" />
-              <input type="tel" placeholder="Phone Number" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700/50 rounded-2xl px-5 py-4 text-white placeholder-slate-500 focus:border-teal-500 outline-none transition-all" />
+              <input type="text" placeholder="Full Name" value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-slate-900 placeholder-slate-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 outline-none transition-all" />
+              <input type="tel" placeholder="Phone Number" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-slate-900 placeholder-slate-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 outline-none transition-all" />
               
               {role === 'doctor' && (
-                <div className="space-y-4 p-5 bg-teal-900/20 rounded-2xl border border-teal-500/30">
-                  <select value={specialty} onChange={(e) => setSpecialty(e.target.value)} className="w-full bg-slate-900 border border-slate-700/50 rounded-xl px-4 py-3 text-white outline-none appearance-none">
+                <div className="space-y-4 p-5 bg-cyan-50 rounded-2xl border border-cyan-100">
+                  <select value={specialty} onChange={(e) => setSpecialty(e.target.value)} className="w-full bg-white border border-cyan-100 rounded-xl px-4 py-3 text-slate-900 outline-none appearance-none focus:ring-4 focus:ring-cyan-100">
                     {Object.values(SYMPTOM_MAP).filter((v,i,a)=>a.indexOf(v)===i).map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
-                  <input type="number" placeholder="Consultation Fee (₹)" value={price} onChange={(e) => setPrice(e.target.value)} className="w-full bg-slate-900 border border-slate-700/50 rounded-xl px-4 py-3 text-white outline-none" />
-                  <input type="text" placeholder="Your UPI ID" value={doctorUpi} onChange={(e) => setDoctorUpi(e.target.value)} className="w-full bg-slate-900 border border-slate-700/50 rounded-xl px-4 py-3 text-white outline-none" />
+                  <input type="number" placeholder="Consultation Fee (Rs.)" value={price} onChange={(e) => setPrice(e.target.value)} className="w-full bg-white border border-cyan-100 rounded-xl px-4 py-3 text-slate-900 outline-none focus:ring-4 focus:ring-cyan-100" />
+                  <input type="text" placeholder="Your UPI ID" value={doctorUpi} onChange={(e) => setDoctorUpi(e.target.value)} className="w-full bg-white border border-cyan-100 rounded-xl px-4 py-3 text-slate-900 outline-none focus:ring-4 focus:ring-cyan-100" />
                 </div>
               )}
               
-              <input type="email" placeholder="Email Address" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700/50 rounded-2xl px-5 py-4 text-white placeholder-slate-500 focus:border-teal-500 outline-none transition-all" />
-              <input type="password" placeholder="Create Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-900/50 border border-slate-700/50 rounded-2xl px-5 py-4 text-white placeholder-slate-500 focus:border-teal-500 outline-none transition-all" />
+              <input type="email" placeholder="Email Address" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-slate-900 placeholder-slate-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 outline-none transition-all" />
+              <input type="password" placeholder="Create Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-slate-900 placeholder-slate-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 outline-none transition-all" />
               
-              {error && <p className="text-red-400 text-xs font-semibold text-center bg-red-500/10 py-3 rounded-xl border border-red-500/20">{error}</p>}
+              {error && <p className="text-red-600 text-xs font-semibold text-center bg-red-50 py-3 rounded-xl border border-red-100">{error}</p>}
               
               <Button onClick={handleRegisterSubmit} className="w-full py-4 text-lg mt-2" disabled={loading}>
                  {loading ? <Loader2 className="animate-spin" /> : "Complete Registration"}
               </Button>
-              <button type="button" onClick={() => setMode('login')} className="w-full text-center pt-4 pb-2 text-slate-400 text-sm hover:text-white transition-colors">
+              <button type="button" onClick={() => setMode('login')} className="w-full text-center pt-4 pb-2 text-slate-500 text-sm hover:text-cyan-700 transition-colors">
                  Already have an account? Sign In
               </button>
            </div>
