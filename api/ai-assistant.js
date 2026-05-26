@@ -113,8 +113,10 @@ const parseJsonText = (text) => {
   }
 };
 
+const getEnv = (name) => globalThis['process']?.env?.[name] || '';
+
 const callOpenAI = async (payload) => {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = getEnv('OPENAI_API_KEY');
   if (!apiKey) return null;
 
   const response = await fetch('https://api.openai.com/v1/responses', {
@@ -124,7 +126,7 @@ const callOpenAI = async (payload) => {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || 'gpt-5.4-mini',
+      model: getEnv('OPENAI_MODEL') || 'gpt-5-mini',
       input: assistantPrompt(payload),
       max_output_tokens: 450,
     }),
@@ -138,10 +140,10 @@ const callOpenAI = async (payload) => {
 };
 
 const callGemini = async (payload) => {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = getEnv('GEMINI_API_KEY');
   if (!apiKey) return null;
 
-  const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+  const model = getEnv('GEMINI_MODEL') || 'gemini-2.0-flash';
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST',
     headers: {
@@ -176,9 +178,9 @@ export default async function handler(req, res) {
     return res.status(200).json(fallbackGuidance('', payload.doctors));
   }
 
-  const providerOrder = process.env.AI_PROVIDER === 'gemini'
-    ? [callGemini, callOpenAI]
-    : [callOpenAI, callGemini];
+  const providerOrder = getEnv('AI_PROVIDER') === 'openai'
+    ? [callOpenAI, callGemini]
+    : [callGemini, callOpenAI];
 
   for (const provider of providerOrder) {
     try {

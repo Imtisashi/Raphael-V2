@@ -7,11 +7,12 @@ import {
   PhoneCall, MapPinned, BadgeCheck, Timer, ArrowUpRight, Brain, Bone, Eye,
   Edit3, Save, Bot, AlertTriangle, FileText
 } from 'lucide-react';
-import { supabase } from './lib/supabaseClient';
+import { hasSupabaseConfig, supabase } from './lib/supabaseClient';
 import appIcon from '../icons/icon-128.webp';
 
 const APP_ICON = appIcon;
 const AI_ASSISTANT_ENDPOINT = import.meta.env.VITE_AI_ASSISTANT_ENDPOINT || (import.meta.env.PROD ? '/api/ai-assistant' : '');
+const REALTIME_SESSION_ENDPOINT = import.meta.env.VITE_REALTIME_SESSION_ENDPOINT || import.meta.env.VITE_REALTIME_TOKEN_ENDPOINT || (import.meta.env.PROD ? '/api/realtime-session' : '');
 
 const SYMPTOM_MAP = {
   head: 'Neurologist', migraine: 'Neurologist', brain: 'Neurologist',
@@ -422,7 +423,7 @@ const createMockAccount = ({ email, password, name, phone, role, specialty, pric
   const accounts = getMockAccounts();
 
   if (accounts.some((account) => account.email === normalizedEmail)) {
-    throw new Error('A mock account already exists for this email. Please sign in.');
+    throw new Error('A demo account already exists for this email. Please sign in.');
   }
 
   const profile = {
@@ -450,7 +451,7 @@ const createMockAccount = ({ email, password, name, phone, role, specialty, pric
       clinic_name: `${profile.name} Clinic`,
       location: 'Online',
       experience: '1 Year',
-      bio: 'Demo provider created through mock OTP signup.',
+      bio: 'Demo provider created through OTP signup.',
       price: displayAmount(price),
       upi_id: doctorUpi.trim(),
       slots: ['09:00 AM', '10:00 AM', '02:00 PM'],
@@ -512,7 +513,7 @@ const updateLocalDoctorProfile = (doctorId, patch) => {
 const friendlyNetworkError = (err, fallback) => {
   const message = err?.message || '';
   if (/failed to fetch|network|fetch/i.test(message)) {
-    return 'Live server is unreachable from this deployment. Mock OTP accounts still work on this device.';
+    return `Could not reach the live server from this deployment. Check the Vercel environment variables, Supabase project status, and browser network access.${message ? ` Details: ${message}` : ''}`;
   }
   return message || fallback;
 };
@@ -787,6 +788,7 @@ function LoginView({ onLogin, showToast }) {
   const [pendingRegistration, setPendingRegistration] = useState(null);
   const [otpInput, setOtpInput] = useState('');
   const [otpCode, setOtpCode] = useState(MOCK_OTP_CODE);
+  const [authMode, setAuthMode] = useState(hasSupabaseConfig ? 'live' : 'mock');
 
   useEffect(() => {
     const timer = setTimeout(() => setIsVisible(true), 100);
@@ -798,25 +800,32 @@ function LoginView({ onLogin, showToast }) {
     setLoading(true);
     setError('');
     try {
+      let liveError = null;
+      if (supabase) {
+        try {
+          const { data, error: loginError } = await supabase.auth.signInWithPassword({
+            email: email.trim(),
+            password,
+          });
+          if (loginError) throw loginError;
+
+          const profile = await loadUserProfile(data.user);
+          onLogin(profile);
+          return;
+        } catch (err) {
+          liveError = err;
+        }
+      }
+
       const mockProfile = loginMockAccount(email.trim(), password);
       if (mockProfile) {
-        if (showToast) showToast(`Welcome back, ${mockProfile.name}!`);
+        if (showToast) showToast(supabase ? `Live sign in is unavailable, using ${mockProfile.name}'s device account.` : `Welcome back, ${mockProfile.name}!`);
         onLogin(mockProfile);
         return;
       }
 
-      if (!supabase) {
-        throw new Error('No mock account found. Create one with the mock OTP flow.');
-      }
-
-      const { data, error: loginError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
-      if (loginError) throw loginError;
-
-      const profile = await loadUserProfile(data.user);
-      onLogin(profile);
+      if (liveError) throw liveError;
+      throw new Error('No account found. Create one with live signup or the demo OTP flow.');
     } catch (err) {
       setError(friendlyNetworkError(err, 'Unable to sign in. Please check your details.'));
     } finally {
@@ -847,11 +856,6 @@ function LoginView({ onLogin, showToast }) {
     }
 
     const normalizedEmail = normalizeEmail(email);
-    if (getMockAccounts().some((account) => account.email === normalizedEmail)) {
-      setError('A mock account already exists for this email. Please sign in.');
-      return;
-    }
-
     const registration = {
       name: name.trim(),
       phone: phone.trim(),
@@ -863,13 +867,67 @@ function LoginView({ onLogin, showToast }) {
       password,
     };
 
+    if (authMode === 'live') {
+      if (!supabase) {
+        setError('Live Supabase auth is not configured in this build. Use demo OTP or add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel.');
+        return;
+      }
+
+      setLoading(true);
+      setError('');
+      try {
+        const { data, error: signUpError } = await supabase.auth.signUp({
+          email: normalizedEmail,
+          password,
+          options: {
+            data: {
+              name: registration.name,
+              phone: registration.phone,
+              role,
+              district: 'Dimapur',
+              specialty: role === 'doctor' ? specialty : undefined,
+              consultationFee: role === 'doctor' ? Number(price) : undefined,
+              doctorUpi: role === 'doctor' ? doctorUpi.trim() : undefined,
+            },
+          },
+        });
+        if (signUpError) throw signUpError;
+        if (!data?.user) throw new Error('Live auth did not return a new user.');
+
+        if (!data.session) {
+          if (showToast) showToast('Live account created. Verify your email, then sign in.', 'success');
+          setMode('login');
+          return;
+        }
+
+        const currentUser = await saveUserProfile(data.user, {
+          name: registration.name,
+          phone: registration.phone,
+          role,
+          district: 'Dimapur',
+        });
+        if (showToast) showToast(`Welcome to Rapha'l, ${currentUser.name}!`, 'success');
+        onLogin(currentUser);
+      } catch (err) {
+        setError(friendlyNetworkError(err, 'Unable to create account on the live server.'));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (getMockAccounts().some((account) => account.email === normalizedEmail)) {
+      setError('A demo account already exists for this email. Please sign in.');
+      return;
+    }
+
     const nextOtpCode = MOCK_OTP_CODE;
     setPendingRegistration(registration);
     setOtpCode(nextOtpCode);
     setOtpInput('');
     setError('');
     setMode('otp');
-    if (showToast) showToast(`Mock OTP: ${nextOtpCode}`, 'info');
+    if (showToast) showToast(`Demo OTP: ${nextOtpCode}`, 'info');
   };
 
   const handleVerifyOtp = (e) => {
@@ -879,7 +937,7 @@ function LoginView({ onLogin, showToast }) {
       return;
     }
     if (otpInput.trim() !== otpCode) {
-      setError('Incorrect mock OTP. Use the demo code shown on this screen.');
+      setError('Incorrect demo OTP. Use the code shown on this screen.');
       return;
     }
 
@@ -887,10 +945,10 @@ function LoginView({ onLogin, showToast }) {
     setError('');
     try {
       const currentUser = createMockAccount(pendingRegistration);
-      if (showToast) showToast(`Mock account verified. Welcome to Rapha'l, ${currentUser.name}!`);
+      if (showToast) showToast(`Demo account verified. Welcome to Rapha'l, ${currentUser.name}!`);
       onLogin(currentUser);
     } catch (err) {
-      setError(err.message || 'Unable to create mock account right now.');
+      setError(err.message || 'Unable to create demo account right now.');
     } finally {
       setLoading(false);
     }
@@ -900,7 +958,7 @@ function LoginView({ onLogin, showToast }) {
     setOtpCode(MOCK_OTP_CODE);
     setOtpInput('');
     setError('');
-    if (showToast) showToast(`Mock OTP: ${MOCK_OTP_CODE}`, 'info');
+    if (showToast) showToast(`Demo OTP: ${MOCK_OTP_CODE}`, 'info');
   };
 
   const handlePasswordReset = async (e) => {
@@ -915,7 +973,7 @@ function LoginView({ onLogin, showToast }) {
     setError('');
     try {
       if (!supabase) {
-        if (showToast) showToast('Mock mode: create a new account with OTP 123456.', 'info');
+        if (showToast) showToast('Demo mode: create a new account with OTP 123456.', 'info');
         setMode('register');
         return;
       }
@@ -959,16 +1017,16 @@ function LoginView({ onLogin, showToast }) {
             </div>
             <div className="mt-5 grid grid-cols-3 gap-2">
               <div className="rounded-lg bg-white/12 p-2">
-                <p className="text-[10px] font-bold text-cyan-100">OTP</p>
-                <p className="text-sm font-black">Mock</p>
+                <p className="text-[10px] font-bold text-cyan-100">Auth</p>
+                <p className="text-sm font-black">{hasSupabaseConfig ? 'Live' : 'Demo'}</p>
               </div>
               <div className="rounded-lg bg-white/12 p-2">
-                <p className="text-[10px] font-bold text-cyan-100">Doctors</p>
-                <p className="text-sm font-black">Live</p>
+                <p className="text-[10px] font-bold text-cyan-100">Backup</p>
+                <p className="text-sm font-black">OTP</p>
               </div>
               <div className="rounded-lg bg-white/12 p-2">
                 <p className="text-[10px] font-bold text-cyan-100">Voice</p>
-                <p className="text-sm font-black">Assist</p>
+                <p className="text-sm font-black">AI</p>
               </div>
             </div>
             <div className="mt-3 grid grid-cols-2 gap-2">
@@ -1033,7 +1091,7 @@ function LoginView({ onLogin, showToast }) {
         ) : mode === 'otp' ? (
           <form onSubmit={handleVerifyOtp} className="space-y-5">
             <div className="space-y-2 text-center">
-              <h2 className="text-xl font-black text-slate-900">Verify mock OTP</h2>
+              <h2 className="text-xl font-black text-slate-900">Verify demo OTP</h2>
               <p className="text-sm font-medium text-slate-500">Use this demo code to finish signup.</p>
             </div>
 
@@ -1064,8 +1122,29 @@ function LoginView({ onLogin, showToast }) {
           </form>
         ) : (
            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-              <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs font-bold text-emerald-700">
-                Mock OTP signup is enabled for demos. No paid SMS or email service is required.
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { if (hasSupabaseConfig) setAuthMode('live'); setError(''); }}
+                    disabled={!hasSupabaseConfig}
+                    className={`rounded-xl px-3 py-3 text-xs font-black transition-all ${authMode === 'live' ? 'bg-slate-950 text-white shadow-md shadow-slate-900/15' : 'text-slate-500 hover:bg-white disabled:opacity-45 disabled:hover:bg-transparent'}`}
+                  >
+                    Live server
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setAuthMode('mock'); setError(''); }}
+                    className={`rounded-xl px-3 py-3 text-xs font-black transition-all ${authMode === 'mock' ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/20' : 'text-slate-500 hover:bg-white'}`}
+                  >
+                    Demo OTP
+                  </button>
+                </div>
+                <p className="px-2 pt-3 pb-1 text-xs font-bold text-slate-500">
+                  {authMode === 'live'
+                    ? 'Creates a real Supabase Auth account on your live backend.'
+                    : 'Uses local OTP 123456 on this device, with no paid SMS or email service.'}
+                </p>
               </div>
               <div className="flex p-1 bg-slate-100 rounded-2xl border border-slate-200">
                 {['patient', 'doctor'].map(r => (
@@ -1092,7 +1171,7 @@ function LoginView({ onLogin, showToast }) {
               {error && <p className="text-red-600 text-xs font-semibold text-center bg-red-50 py-3 rounded-xl border border-red-100">{error}</p>}
               
               <Button onClick={handleRegisterSubmit} className="w-full py-4 text-lg mt-2" disabled={loading}>
-                 {loading ? <Loader2 className="animate-spin" /> : "Send Mock OTP"}
+                 {loading ? <Loader2 className="animate-spin" /> : (authMode === 'live' ? "Create Live Account" : "Send Demo OTP")}
               </Button>
               <button type="button" onClick={() => setMode('login')} className="w-full text-center pt-4 pb-2 text-slate-500 text-sm hover:text-cyan-700 transition-colors">
                  Already have an account? Sign In
@@ -1111,9 +1190,17 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
   const [isListening, setIsListening] = useState(false);
   const [isAssistantThinking, setIsAssistantThinking] = useState(false);
   const [assistantProvider, setAssistantProvider] = useState(AI_ASSISTANT_ENDPOINT ? 'AI' : 'Local');
-  const voiceSupported = useMemo(() => Boolean(window.SpeechRecognition || window.webkitSpeechRecognition), []);
+  const [voiceSessionState, setVoiceSessionState] = useState('idle');
+  const [voiceStatus, setVoiceStatus] = useState('');
+  const voiceSupported = useMemo(() => typeof window !== 'undefined' && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition), []);
+  const liveVoiceSupported = useMemo(() => typeof window !== 'undefined' && Boolean(window.RTCPeerConnection && navigator.mediaDevices?.getUserMedia), []);
   const chatEndRef = useRef(null);
   const recognitionRef = useRef(null);
+  const realtimePeerRef = useRef(null);
+  const realtimeStreamRef = useRef(null);
+  const realtimeAudioRef = useRef(null);
+  const realtimeChannelRef = useRef(null);
+  const lastVoiceReplyRef = useRef('');
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1174,16 +1261,25 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
       }
     };
     recognition.onend = () => setIsListening(false);
-    recognition.onerror = () => {
+    recognition.onerror = (event) => {
       setIsListening(false);
-      setChatMessages(prev => [...prev, { sender: 'ai', text: 'I could not hear that clearly. Please try again, or type the symptom in a few words.' }]);
+      if (event?.error === 'aborted') return;
+      const errorCopy = {
+        'not-allowed': 'Microphone permission is blocked. Enable microphone access for this site and try again.',
+        'service-not-allowed': 'This browser blocked its speech service. Use the live AI voice button on the deployed app, or type your symptom.',
+        'audio-capture': 'No microphone was found. Connect or enable a microphone and try again.',
+        network: 'Browser speech recognition could not reach its speech service. Try the live AI voice mode or type your symptom.',
+        'no-speech': 'I did not catch speech yet. Try again and speak after the mic turns on.',
+      };
+      setShowChat(true);
+      setChatMessages(prev => [...prev, { sender: 'ai', text: errorCopy[event?.error] || 'Speech recognition stopped before it heard enough audio. Try again or type your symptom.' }]);
     };
     recognitionRef.current = recognition;
 
     return () => recognition.stop();
   }, [handleSendChat]);
 
-  const toggleVoice = () => {
+  const toggleVoice = useCallback(() => {
     if (!recognitionRef.current) {
       speak('Voice assistance is not supported in this browser.');
       return;
@@ -1200,7 +1296,182 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
     } catch {
       setIsListening(false);
     }
-  };
+  }, [isListening, speak]);
+
+  const stopRealtimeVoice = useCallback((showMessage = false) => {
+    if (realtimeChannelRef.current) {
+      realtimeChannelRef.current.close();
+      realtimeChannelRef.current = null;
+    }
+    if (realtimePeerRef.current) {
+      realtimePeerRef.current.close();
+      realtimePeerRef.current = null;
+    }
+    if (realtimeStreamRef.current) {
+      realtimeStreamRef.current.getTracks().forEach(track => track.stop());
+      realtimeStreamRef.current = null;
+    }
+    if (realtimeAudioRef.current) {
+      realtimeAudioRef.current.remove();
+      realtimeAudioRef.current = null;
+    }
+    setVoiceSessionState('idle');
+    setVoiceStatus('');
+    if (showMessage) {
+      setChatMessages(prev => [...prev, { sender: 'ai', text: 'Live voice is paused. Tap the mic when you want to talk again.' }]);
+    }
+  }, []);
+
+  useEffect(() => () => stopRealtimeVoice(false), [stopRealtimeVoice]);
+
+  const routeFromVoiceTranscript = useCallback((transcript) => {
+    const guidance = generateCareGuidance(transcript, doctors);
+    if (guidance.shouldSearch) {
+      setSearchQuery(guidance.searchQuery || transcript);
+      window.setTimeout(() => setView('search'), 700);
+    }
+  }, [doctors, setSearchQuery, setView]);
+
+  const appendVoiceReply = useCallback((text) => {
+    const cleaned = String(text || '').trim();
+    if (!cleaned || cleaned === lastVoiceReplyRef.current) return;
+    lastVoiceReplyRef.current = cleaned;
+    setChatMessages(prev => [...prev, { sender: 'ai', text: cleaned }]);
+  }, []);
+
+  const handleRealtimeEvent = useCallback((event) => {
+    if (!event?.type) return;
+
+    if (event.type === 'conversation.item.input_audio_transcription.completed') {
+      const transcript = event.transcript?.trim();
+      if (transcript) {
+        setChatMessages(prev => [...prev, { sender: 'user', text: transcript }]);
+        routeFromVoiceTranscript(transcript);
+      }
+      return;
+    }
+
+    if (['response.audio_transcript.done', 'response.output_text.done'].includes(event.type)) {
+      appendVoiceReply(event.transcript || event.text || event.output_text);
+      return;
+    }
+
+    if (event.type === 'error') {
+      const message = event.error?.message || 'The live voice session had a problem. Please restart the mic.';
+      setChatMessages(prev => [...prev, { sender: 'ai', text: message }]);
+      setVoiceStatus('Voice session needs restart');
+    }
+  }, [appendVoiceReply, routeFromVoiceTranscript]);
+
+  const startRealtimeVoice = useCallback(async () => {
+    if (voiceSessionState === 'connecting' || voiceSessionState === 'live') {
+      stopRealtimeVoice(true);
+      return;
+    }
+
+    setShowChat(true);
+    if (isListening && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    }
+
+    if (!REALTIME_SESSION_ENDPOINT) {
+      setChatMessages(prev => [...prev, { sender: 'ai', text: 'Live AI voice is available on the Vercel deployment after OPENAI_API_KEY is set. I will use browser dictation here so you can still speak your symptom.' }]);
+      if (voiceSupported) toggleVoice();
+      return;
+    }
+
+    if (!liveVoiceSupported) {
+      setChatMessages(prev => [...prev, { sender: 'ai', text: 'This browser needs HTTPS, WebRTC, and microphone permission for live AI voice. Try the deployed site in Chrome or Edge, or type your symptom.' }]);
+      return;
+    }
+
+    setVoiceSessionState('connecting');
+    setVoiceStatus('Requesting microphone');
+    lastVoiceReplyRef.current = '';
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      realtimeStreamRef.current = stream;
+
+      const peer = new RTCPeerConnection();
+      realtimePeerRef.current = peer;
+
+      const audio = document.createElement('audio');
+      audio.autoplay = true;
+      audio.setAttribute('playsinline', 'true');
+      audio.style.display = 'none';
+      document.body.appendChild(audio);
+      realtimeAudioRef.current = audio;
+
+      peer.ontrack = (event) => {
+        audio.srcObject = event.streams[0];
+        audio.play().catch(() => {});
+      };
+      peer.onconnectionstatechange = () => {
+        if (['failed', 'closed', 'disconnected'].includes(peer.connectionState)) {
+          setVoiceStatus(peer.connectionState === 'disconnected' ? 'Reconnecting voice' : '');
+        }
+      };
+
+      stream.getAudioTracks().forEach(track => peer.addTrack(track, stream));
+
+      const channel = peer.createDataChannel('oai-events');
+      realtimeChannelRef.current = channel;
+      channel.onopen = () => {
+        setAssistantProvider('Voice AI');
+        setVoiceStatus('Listening and ready to talk');
+      };
+      channel.onmessage = (event) => {
+        try {
+          handleRealtimeEvent(JSON.parse(event.data));
+        } catch {
+          // The Realtime API uses JSON events; ignore anything malformed.
+        }
+      };
+      channel.onerror = () => {
+        setVoiceStatus('Voice channel interrupted');
+      };
+
+      setVoiceStatus('Connecting to AI voice');
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
+
+      const response = await fetch(REALTIME_SESSION_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/sdp',
+          'X-Raphael-Doctors': encodeURIComponent(JSON.stringify(doctors.slice(0, 12).map(doctor => ({
+            name: doctor.name,
+            specialty: doctor.specialty,
+            district: doctor.district || doctor.location,
+            nextSlot: nextSlotFor(doctor),
+          })))),
+        },
+        body: offer.sdp,
+      });
+
+      const answerSdp = await response.text();
+      if (!response.ok) throw new Error(answerSdp || 'Unable to start live AI voice.');
+      if (!answerSdp.trim()) throw new Error('The voice server did not return a WebRTC answer.');
+
+      await peer.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+      setVoiceSessionState('live');
+      setAssistantProvider('Voice AI');
+      setVoiceStatus('Listening and ready to talk');
+      setChatMessages(prev => [...prev, { sender: 'ai', text: 'I am listening now. Tell me what is going on, and I will talk it through with you.' }]);
+    } catch (err) {
+      stopRealtimeVoice(false);
+      const details = friendlyNetworkError(err, 'Unable to start live AI voice.');
+      setChatMessages(prev => [...prev, { sender: 'ai', text: `${details} Make sure OPENAI_API_KEY is set in Vercel and microphone permission is allowed.` }]);
+    }
+  }, [doctors, handleRealtimeEvent, isListening, liveVoiceSupported, stopRealtimeVoice, toggleVoice, voiceSessionState, voiceSupported]);
 
   const featuredDoctors = doctors.slice(0, 3);
   const specialties = uniqueSpecialties();
@@ -1228,8 +1499,8 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
             className="w-full h-14 pl-12 pr-14 rounded-lg bg-white text-slate-900 placeholder-slate-400 outline-none font-semibold"
             onChange={(e) => { setSearchQuery(e.target.value); if (e.target.value.length > 2) setView('search'); }}
           />
-          <button type="button" onClick={toggleVoice} className={`absolute right-2 top-2 p-2.5 rounded-lg transition-colors ${isListening ? 'bg-red-50 text-red-500' : 'bg-slate-950 text-white hover:bg-slate-800'}`}>
-            {isListening ? <MicOff size={16}/> : <Mic size={16}/>}
+          <button type="button" onClick={startRealtimeVoice} className={`absolute right-2 top-2 p-2.5 rounded-lg transition-colors ${voiceSessionState === 'live' ? 'bg-emerald-50 text-emerald-600' : voiceSessionState === 'connecting' ? 'bg-cyan-50 text-cyan-700' : 'bg-slate-950 text-white hover:bg-slate-800'}`}>
+            {voiceSessionState === 'connecting' ? <Loader2 size={16} className="animate-spin" /> : voiceSessionState === 'live' ? <MicOff size={16}/> : <Mic size={16}/>}
           </button>
         </div>
 
@@ -1314,14 +1585,23 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
                 <div className="bg-white/15 p-1.5 rounded-lg"><Sparkles size={16} /></div>
                 <div>
                   <span className="font-bold text-sm block">Rapha'l Assist</span>
-                  <span className="text-[10px] font-bold text-cyan-100">{assistantProvider} triage</span>
+                  <span className="text-[10px] font-bold text-cyan-100">{voiceSessionState === 'live' ? 'Live voice' : voiceSessionState === 'connecting' ? 'Connecting voice' : `${assistantProvider} triage`}</span>
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <button onClick={startRealtimeVoice} className={`p-1.5 rounded-md transition-colors ${voiceSessionState === 'live' ? 'bg-emerald-400 text-slate-950' : 'bg-white/10 hover:bg-white/20'}`}>
+                  {voiceSessionState === 'connecting' ? <Loader2 size={16} className="animate-spin" /> : voiceSessionState === 'live' ? <MicOff size={16} /> : <Mic size={16} />}
+                </button>
                 <button onClick={() => speak(chatMessages[chatMessages.length - 1]?.text || '')} className="bg-white/10 hover:bg-white/20 p-1.5 rounded-md transition-colors"><Volume2 size={16} /></button>
                 <button onClick={() => setShowChat(false)} className="bg-white/10 hover:bg-white/20 p-1.5 rounded-md transition-colors"><X size={16} /></button>
               </div>
             </div>
+            {voiceStatus && (
+              <div className="bg-cyan-50 border-b border-cyan-100 px-4 py-2 text-[11px] font-black text-cyan-800 flex items-center gap-2">
+                <span className={`h-2 w-2 rounded-full ${voiceSessionState === 'live' ? 'bg-emerald-500' : 'bg-cyan-500 animate-pulse'}`} />
+                {voiceStatus}
+              </div>
+            )}
             <div className="h-64 overflow-y-auto p-4 space-y-4 bg-slate-50/50">
               {chatMessages.map((msg, i) => (
                 <div key={i} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -1340,7 +1620,9 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
               <div ref={chatEndRef} />
             </div>
             <div className="p-3 bg-white border-t border-slate-100 flex gap-2">
-              <button type="button" onClick={toggleVoice} disabled={!voiceSupported} className={`p-2.5 rounded-lg transition-colors ${isListening ? 'bg-red-50 text-red-500' : 'bg-cyan-50 text-cyan-700 hover:bg-cyan-100 disabled:opacity-40'}`}>{isListening ? <MicOff size={16}/> : <Mic size={16}/>}</button>
+              <button type="button" onClick={startRealtimeVoice} className={`p-2.5 rounded-lg transition-colors ${voiceSessionState === 'live' ? 'bg-emerald-50 text-emerald-600' : voiceSessionState === 'connecting' ? 'bg-cyan-50 text-cyan-700' : isListening ? 'bg-red-50 text-red-500' : 'bg-cyan-50 text-cyan-700 hover:bg-cyan-100'}`}>
+                {voiceSessionState === 'connecting' ? <Loader2 size={16} className="animate-spin" /> : voiceSessionState === 'live' || isListening ? <MicOff size={16}/> : <Mic size={16}/>}
+              </button>
               <input type="text" placeholder="Type a symptom..." value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendChat()} className="flex-1 bg-slate-100 rounded-lg px-4 py-2 outline-none text-sm focus:ring-2 focus:ring-cyan-500/20 focus:bg-white border border-transparent focus:border-cyan-200 transition-all" />
               <button onClick={() => handleSendChat()} disabled={isAssistantThinking} className="p-2.5 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white rounded-lg transition-colors shadow-md shadow-cyan-500/20"><Send size={16} /></button>
             </div>
