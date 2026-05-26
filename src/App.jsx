@@ -70,13 +70,245 @@ const generateCareGuidance = (input, doctors = []) => {
 };
 
 const numericAmount = (value) => {
-  const amount = Number(String(value || '').replace(/[^\d.]/g, ''));
+  const match = String(value || '').replace(/,/g, '').match(/\d+(?:\.\d+)?/);
+  const amount = Number(match?.[0]);
   return Number.isFinite(amount) && amount > 0 ? amount : 500;
 };
 
 const displayAmount = (value) => `Rs. ${numericAmount(value)}`;
 
 const USER_PROFILE_FIELDS = 'id, email, name, role, phone, district, doctorId';
+const MOCK_OTP_CODE = '123456';
+const STORAGE_KEYS = {
+  accounts: 'raphael.mock.accounts',
+  session: 'raphael.mock.session',
+  doctors: 'raphael.mock.doctors',
+  appointments: 'raphael.mock.appointments',
+};
+
+const DEFAULT_DOCTORS = [
+  {
+    id: 91001,
+    name: 'Dr. Asha Jamir',
+    specialty: 'General Physician',
+    rating: 4.9,
+    reviews: 126,
+    image: '',
+    district: 'Dimapur',
+    clinic_name: 'Raphael Demo Clinic',
+    location: 'Dimapur',
+    experience: '8 Years',
+    bio: 'Demo physician for fever, flu, pain, and routine consultations.',
+    price: 'Rs. 500',
+    upi_id: '',
+    slots: ['09:00 AM', '10:30 AM', '02:00 PM'],
+  },
+  {
+    id: 91002,
+    name: 'Dr. Meera Ao',
+    specialty: 'Dermatologist',
+    rating: 4.8,
+    reviews: 88,
+    image: '',
+    district: 'Kohima',
+    clinic_name: 'Skin & Wellness Demo',
+    location: 'Kohima',
+    experience: '6 Years',
+    bio: 'Demo dermatologist for rash, acne, and skin irritation guidance.',
+    price: 'Rs. 650',
+    upi_id: '',
+    slots: ['11:00 AM', '01:00 PM', '04:00 PM'],
+  },
+  {
+    id: 91003,
+    name: 'Dr. Imkong Walling',
+    specialty: 'Cardiologist',
+    rating: 5.0,
+    reviews: 64,
+    image: '',
+    district: 'Dimapur',
+    clinic_name: 'Heart Care Demo',
+    location: 'Dimapur',
+    experience: '12 Years',
+    bio: 'Demo cardiologist for non-emergency heart and blood-pressure concerns.',
+    price: 'Rs. 900',
+    upi_id: '',
+    slots: ['09:30 AM', '12:00 PM', '03:30 PM'],
+  },
+];
+
+const normalizeEmail = (value) => value.trim().toLowerCase();
+
+const readStoredJson = (key, fallback) => {
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const writeStoredJson = (key, value) => {
+  window.localStorage.setItem(key, JSON.stringify(value));
+};
+
+const encodeMockPassword = (password) => (
+  Array.from(password)
+    .map((char, index) => (char.charCodeAt(0) + index + 31).toString(36))
+    .join('.')
+);
+
+const createLocalId = (prefix) => {
+  const random = Math.random().toString(36).slice(2, 8);
+  return `${prefix}-${Date.now().toString(36)}-${random}`;
+};
+
+const createLocalDoctorId = () => 92000 + Math.floor(Math.random() * 7000);
+
+const withoutPassword = (account) => {
+  const profile = { ...account };
+  delete profile.passwordHash;
+  return profile;
+};
+
+const getMockAccounts = () => readStoredJson(STORAGE_KEYS.accounts, []);
+
+const saveMockAccounts = (accounts) => writeStoredJson(STORAGE_KEYS.accounts, accounts);
+
+const getMockSession = () => readStoredJson(STORAGE_KEYS.session, null);
+
+const saveMockSession = (profile) => writeStoredJson(STORAGE_KEYS.session, profile);
+
+const clearMockSession = () => window.localStorage.removeItem(STORAGE_KEYS.session);
+
+const isMockUser = (profile) => Boolean(profile?.isMock);
+
+const getLocalDoctors = () => readStoredJson(STORAGE_KEYS.doctors, []);
+
+const saveLocalDoctors = (doctors) => writeStoredJson(STORAGE_KEYS.doctors, doctors);
+
+const mergeDoctors = (...groups) => {
+  const seen = new Set();
+  return groups.flat().filter((doctor) => {
+    if (!doctor?.id || seen.has(String(doctor.id))) return false;
+    seen.add(String(doctor.id));
+    return true;
+  });
+};
+
+const upsertLocalDoctor = (doctor) => {
+  const doctors = getLocalDoctors();
+  const index = doctors.findIndex((item) => String(item.id) === String(doctor.id));
+  const nextDoctors = index >= 0
+    ? doctors.map((item, itemIndex) => (itemIndex === index ? { ...item, ...doctor } : item))
+    : [...doctors, doctor];
+  saveLocalDoctors(nextDoctors);
+  return doctor;
+};
+
+const getLocalAppointments = () => readStoredJson(STORAGE_KEYS.appointments, []);
+
+const saveLocalAppointments = (appointments) => writeStoredJson(STORAGE_KEYS.appointments, appointments);
+
+const saveLocalAppointment = (appointment) => {
+  const nextAppointment = {
+    ...appointment,
+    id: appointment.id || createLocalId('mock-appt'),
+    isMock: true,
+    created_at: appointment.created_at || new Date().toISOString(),
+  };
+  saveLocalAppointments([nextAppointment, ...getLocalAppointments()]);
+  return nextAppointment;
+};
+
+const updateLocalAppointment = (id, patch) => {
+  let updatedAppointment = null;
+  const appointments = getLocalAppointments().map((appointment) => {
+    if (String(appointment.id) !== String(id)) return appointment;
+    updatedAppointment = { ...appointment, ...patch };
+    return updatedAppointment;
+  });
+  saveLocalAppointments(appointments);
+  return updatedAppointment;
+};
+
+const getLocalPatientAppointments = (patientId) => (
+  getLocalAppointments()
+    .filter((appointment) => String(appointment.patient_id) === String(patientId))
+    .sort((a, b) => new Date(b.created_at || b.appointment_date) - new Date(a.created_at || a.appointment_date))
+);
+
+const getLocalDoctorAppointments = (doctorId) => (
+  getLocalAppointments()
+    .filter((appointment) => String(appointment.doctor_id) === String(doctorId))
+    .sort((a, b) => new Date(b.created_at || b.appointment_date) - new Date(a.created_at || a.appointment_date))
+);
+
+const createMockAccount = ({ email, password, name, phone, role, specialty, price, doctorUpi }) => {
+  const normalizedEmail = normalizeEmail(email);
+  const accounts = getMockAccounts();
+
+  if (accounts.some((account) => account.email === normalizedEmail)) {
+    throw new Error('A mock account already exists for this email. Please sign in.');
+  }
+
+  const profile = {
+    id: createLocalId('mock-user'),
+    email: normalizedEmail,
+    name: name.trim(),
+    role,
+    phone: phone.trim(),
+    district: 'Dimapur',
+    isMock: true,
+  };
+
+  if (role === 'doctor') {
+    const doctor = upsertLocalDoctor({
+      id: createLocalDoctorId(),
+      name: profile.name.startsWith('Dr.') ? profile.name : `Dr. ${profile.name}`,
+      specialty,
+      rating: 5.0,
+      reviews: 0,
+      image: '',
+      district: 'Dimapur',
+      clinic_name: `${profile.name} Clinic`,
+      location: 'Online',
+      experience: '1 Year',
+      bio: 'Demo provider created through mock OTP signup.',
+      price: displayAmount(price),
+      upi_id: doctorUpi.trim(),
+      slots: ['09:00 AM', '10:00 AM', '02:00 PM'],
+      owner_id: profile.id,
+      isMock: true,
+    });
+    profile.doctorId = doctor.id;
+  }
+
+  const account = {
+    ...profile,
+    passwordHash: encodeMockPassword(password),
+  };
+  saveMockAccounts([...accounts, account]);
+  saveMockSession(profile);
+  return profile;
+};
+
+const loginMockAccount = (email, password) => {
+  const account = getMockAccounts().find((item) => item.email === normalizeEmail(email));
+  if (!account || account.passwordHash !== encodeMockPassword(password)) return null;
+
+  const profile = withoutPassword(account);
+  saveMockSession(profile);
+  return profile;
+};
+
+const friendlyNetworkError = (err, fallback) => {
+  const message = err?.message || '';
+  if (/failed to fetch|network|fetch/i.test(message)) {
+    return 'Live server is unreachable from this deployment. Mock OTP accounts still work on this device.';
+  }
+  return message || fallback;
+};
 
 const routeForRole = (role) => {
   if (role === 'admin') return 'admin';
@@ -95,6 +327,7 @@ const profileFromAuthUser = (authUser) => ({
 
 const attachDoctorProfile = async (profile) => {
   if (profile?.role !== 'doctor') return profile;
+  if (!supabase) return profile;
 
   let query = supabase
     .from('doctors')
@@ -112,8 +345,46 @@ const attachDoctorProfile = async (profile) => {
   return docProfile ? { ...profile, doctorId: docProfile.id } : profile;
 };
 
+const ensureDoctorProfile = async (authUser, profile) => {
+  if (profile?.role !== 'doctor') return profile;
+  if (!supabase) return profile;
+
+  const existingProfile = await attachDoctorProfile(profile);
+  if (existingProfile.doctorId) return existingProfile;
+
+  const metadata = authUser.user_metadata || {};
+  const { data: doctor, error } = await supabase
+    .from('doctors')
+    .insert([{
+      name: profile.name,
+      specialty: metadata.specialty || 'General Physician',
+      rating: 5.0,
+      reviews: 0,
+      image: '',
+      location: 'Online',
+      experience: '1 Year',
+      bio: 'New specialist at Rapha\'l.',
+      price: displayAmount(metadata.consultationFee),
+      slots: ['09:00 AM', '10:00 AM', '02:00 PM'],
+      upi_id: metadata.doctorUpi || '',
+      owner_id: authUser.id,
+    }])
+    .select('id')
+    .single();
+
+  if (error) throw error;
+
+  await supabase
+    .from('users')
+    .update({ doctorId: doctor.id })
+    .eq('id', authUser.id);
+
+  return { ...profile, doctorId: doctor.id };
+};
+
 const loadUserProfile = async (authUser) => {
   if (!authUser) return null;
+  if (!supabase) throw new Error('Live auth is not configured.');
 
   let { data: profile, error } = await supabase
     .from('users')
@@ -137,10 +408,12 @@ const loadUserProfile = async (authUser) => {
     return saveUserProfile(authUser, profileFromAuthUser(authUser));
   }
 
-  return attachDoctorProfile(profile);
+  return ensureDoctorProfile(authUser, profile);
 };
 
 const saveUserProfile = async (authUser, profileInput) => {
+  if (!supabase) throw new Error('Live auth is not configured.');
+
   const profile = {
     ...profileFromAuthUser(authUser),
     ...profileInput,
@@ -155,7 +428,7 @@ const saveUserProfile = async (authUser, profileInput) => {
     .single();
 
   if (error) throw error;
-  return attachDoctorProfile(data);
+  return ensureDoctorProfile(authUser, data);
 };
 
 // ==========================================
@@ -223,6 +496,9 @@ function LoginView({ onLogin, showToast }) {
   const [doctorUpi, setDoctorUpi] = useState(''); 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pendingRegistration, setPendingRegistration] = useState(null);
+  const [otpInput, setOtpInput] = useState('');
+  const [otpCode, setOtpCode] = useState(MOCK_OTP_CODE);
 
   useEffect(() => {
     const timer = setTimeout(() => setIsVisible(true), 100);
@@ -234,6 +510,17 @@ function LoginView({ onLogin, showToast }) {
     setLoading(true);
     setError('');
     try {
+      const mockProfile = loginMockAccount(email.trim(), password);
+      if (mockProfile) {
+        if (showToast) showToast(`Welcome back, ${mockProfile.name}!`);
+        onLogin(mockProfile);
+        return;
+      }
+
+      if (!supabase) {
+        throw new Error('No mock account found. Create one with the mock OTP flow.');
+      }
+
       const { data, error: loginError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
@@ -243,7 +530,7 @@ function LoginView({ onLogin, showToast }) {
       const profile = await loadUserProfile(data.user);
       onLogin(profile);
     } catch (err) {
-      setError(err.message || 'Unable to sign in. Please check your details.');
+      setError(friendlyNetworkError(err, 'Unable to sign in. Please check your details.'));
     } finally {
       setLoading(false);
     }
@@ -260,7 +547,8 @@ function LoginView({ onLogin, showToast }) {
       return;
     }
     if (role === 'doctor') {
-      if (!price || Number(price) <= 0) {
+      const consultationFee = Number(price);
+      if (!Number.isFinite(consultationFee) || consultationFee <= 0) {
         setError('Doctors must set a valid consultation fee.');
         return;
       }
@@ -270,54 +558,61 @@ function LoginView({ onLogin, showToast }) {
       }
     }
 
+    const normalizedEmail = normalizeEmail(email);
+    if (getMockAccounts().some((account) => account.email === normalizedEmail)) {
+      setError('A mock account already exists for this email. Please sign in.');
+      return;
+    }
+
+    const registration = {
+      name: name.trim(),
+      phone: phone.trim(),
+      role,
+      specialty,
+      price,
+      doctorUpi,
+      email: normalizedEmail,
+      password,
+    };
+
+    const nextOtpCode = MOCK_OTP_CODE;
+    setPendingRegistration(registration);
+    setOtpCode(nextOtpCode);
+    setOtpInput('');
+    setError('');
+    setMode('otp');
+    if (showToast) showToast(`Mock OTP: ${nextOtpCode}`, 'info');
+  };
+
+  const handleVerifyOtp = (e) => {
+    e.preventDefault();
+    if (!pendingRegistration) {
+      setMode('register');
+      return;
+    }
+    if (otpInput.trim() !== otpCode) {
+      setError('Incorrect mock OTP. Use the demo code shown on this screen.');
+      return;
+    }
+
     setLoading(true);
     setError('');
     try {
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
-        options: {
-          data: {
-            name: name.trim(),
-            role,
-            phone: phone.trim(),
-            district: 'Dimapur',
-          },
-        },
-      });
-      if (signUpError) throw signUpError;
-      if (!data.user) throw new Error('Unable to create account. Please try again.');
-      
-      let currentUser = await saveUserProfile(data.user, {
-        name: name.trim(),
-        role,
-        phone: phone.trim(),
-        district: 'Dimapur',
-      });
-      if (role === 'doctor') {
-         const fee = Number(price);
-         const { data: docData, error: docError } = await supabase.from('doctors').insert([{ 
-             name: name.trim(), specialty, rating: 5.0, reviews: 0, image: '', 
-             location: 'Online', experience: '1 Year', bio: 'New specialist at Rapha\'l.', 
-             price: `Rs. ${fee}`, slots: ['09:00 AM', '10:00 AM', '02:00 PM'], upi_id: doctorUpi.trim(),
-             owner_id: data.user.id
-         }]).select().single();
-         if (docError) throw new Error("Failed to create doctor profile.");
-         currentUser.doctorId = docData.id;
-         await supabase.from('users').update({ doctorId: docData.id }).eq('id', data.user.id);
-      }
-      if (data.session) {
-        if(showToast) showToast(`Welcome to Rapha'l, ${name.trim()}!`);
-        onLogin(currentUser);
-      } else {
-        if(showToast) showToast('Account created. Please confirm your email before signing in.', 'info');
-        setMode('login');
-      }
+      const currentUser = createMockAccount(pendingRegistration);
+      if (showToast) showToast(`Mock account verified. Welcome to Rapha'l, ${currentUser.name}!`);
+      onLogin(currentUser);
     } catch (err) {
-      setError(err.message || 'Unable to create account right now.');
+      setError(err.message || 'Unable to create mock account right now.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleResendOtp = () => {
+    setOtpCode(MOCK_OTP_CODE);
+    setOtpInput('');
+    setError('');
+    if (showToast) showToast(`Mock OTP: ${MOCK_OTP_CODE}`, 'info');
   };
 
   const handlePasswordReset = async (e) => {
@@ -331,6 +626,12 @@ function LoginView({ onLogin, showToast }) {
     setLoading(true);
     setError('');
     try {
+      if (!supabase) {
+        if (showToast) showToast('Mock mode: create a new account with OTP 123456.', 'info');
+        setMode('register');
+        return;
+      }
+
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(targetEmail, {
         redirectTo: window.location.origin,
       });
@@ -338,7 +639,7 @@ function LoginView({ onLogin, showToast }) {
       if (showToast) showToast('Password reset email sent.', 'info');
       setMode('login');
     } catch (err) {
-      setError(err.message || 'Unable to send reset email.');
+      setError(friendlyNetworkError(err, 'Unable to send reset email.'));
     } finally {
       setLoading(false);
     }
@@ -401,8 +702,43 @@ function LoginView({ onLogin, showToast }) {
               Back to sign in
             </button>
           </form>
+        ) : mode === 'otp' ? (
+          <form onSubmit={handleVerifyOtp} className="space-y-5">
+            <div className="space-y-2 text-center">
+              <h2 className="text-xl font-black text-slate-900">Verify mock OTP</h2>
+              <p className="text-sm font-medium text-slate-500">Use this demo code to finish signup.</p>
+            </div>
+
+            <div className="rounded-2xl border border-cyan-100 bg-cyan-50 px-5 py-4 text-center">
+              <span className="block text-[10px] font-black uppercase tracking-[0.25em] text-cyan-700 mb-2">Demo OTP</span>
+              <span className="text-3xl font-black tracking-[0.35em] text-slate-900">{otpCode}</span>
+            </div>
+
+            <div className="group relative">
+              <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none transition-colors group-focus-within:text-cyan-500 text-slate-400"><Lock size={18} /></div>
+              <input inputMode="numeric" maxLength="6" placeholder="Enter OTP" value={otpInput} onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ''))} className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-5 py-4 text-slate-900 placeholder-slate-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 outline-none transition-all text-center tracking-[0.35em] font-black" required />
+            </div>
+
+            {error && <div className="bg-red-50 border border-red-100 text-red-600 text-xs font-semibold text-center py-3 rounded-xl">{error}</div>}
+
+            <Button className="w-full py-4 text-lg" disabled={loading}>
+              {loading ? <Loader2 className="animate-spin" /> : "Verify & Create Account"}
+            </Button>
+
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <button type="button" onClick={handleResendOtp} className="text-center text-cyan-700 text-sm hover:text-cyan-900 transition-colors font-bold">
+                Resend code
+              </button>
+              <button type="button" onClick={() => { setMode('register'); setError(''); }} className="text-center text-slate-500 text-sm hover:text-cyan-700 transition-colors font-bold">
+                Edit details
+              </button>
+            </div>
+          </form>
         ) : (
            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs font-bold text-emerald-700">
+                Mock OTP signup is enabled for demos. No paid SMS or email service is required.
+              </div>
               <div className="flex p-1 bg-slate-100 rounded-2xl border border-slate-200">
                 {['patient', 'doctor'].map(r => (
                   <button key={r} onClick={() => setRole(r)} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-300 ${role === r ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/20' : 'text-slate-500 hover:text-cyan-700'}`}>{r}</button>
@@ -428,7 +764,7 @@ function LoginView({ onLogin, showToast }) {
               {error && <p className="text-red-600 text-xs font-semibold text-center bg-red-50 py-3 rounded-xl border border-red-100">{error}</p>}
               
               <Button onClick={handleRegisterSubmit} className="w-full py-4 text-lg mt-2" disabled={loading}>
-                 {loading ? <Loader2 className="animate-spin" /> : "Complete Registration"}
+                 {loading ? <Loader2 className="animate-spin" /> : "Send Mock OTP"}
               </Button>
               <button type="button" onClick={() => setMode('login')} className="w-full text-center pt-4 pb-2 text-slate-500 text-sm hover:text-cyan-700 transition-colors">
                  Already have an account? Sign In
@@ -838,27 +1174,48 @@ function ProfileView({ user, logout }) {
 
 function DoctorDashboard({ user, logout, showToast }) {
   const [appointments, setAppointments] = useState([]);
+  const doctorId = user?.doctorId;
+  const usingMockData = isMockUser(user);
   
   useEffect(() => {
     let active = true;
     const fetchApts = async () => {
-      if (user?.doctorId) {
-         const { data } = await supabase.from('appointments').select().eq('doctor_id', user.doctorId);
-         if (data && active) setAppointments(data);
+      if (doctorId) {
+         if (usingMockData || !supabase) {
+           if (active) setAppointments(getLocalDoctorAppointments(doctorId));
+           return;
+         }
+
+         try {
+           const { data, error } = await supabase.from('appointments').select().eq('doctor_id', doctorId);
+           if (error) throw error;
+           if (data && active) setAppointments(data);
+         } catch {
+           if (active) setAppointments(getLocalDoctorAppointments(doctorId));
+         }
       }
     };
     fetchApts();
     return () => { active = false; };
-  }, [user?.doctorId]);
+  }, [doctorId, usingMockData]);
 
   const handleAction = async (id, action) => {
     const status = action === 'accept' ? 'Accepted' : 'Cancelled';
-    const { error } = await supabase.from('appointments').update({ status }).eq('id', id);
-    if (!error) {
+
+    if (isMockUser(user) || !supabase || String(id).startsWith('mock-appt')) {
+      updateLocalAppointment(id, { status });
+      setAppointments(prev => prev.map(apt => String(apt.id) === String(id) ? { ...apt, status } : apt));
+      showToast(action === 'accept' ? 'Appointment accepted' : 'Appointment declined');
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from('appointments').update({ status }).eq('id', id);
+      if (error) throw error;
       setAppointments(prev => prev.map(apt => apt.id === id ? { ...apt, status } : apt));
-      showToast(action === 'accept' ? "Appointment accepted" : "Appointment declined");
-    } else {
-      showToast(error.message || 'Unable to update appointment.', 'error');
+      showToast(action === 'accept' ? 'Appointment accepted' : 'Appointment declined');
+    } catch (err) {
+      showToast(friendlyNetworkError(err, 'Unable to update appointment.'), 'error');
     }
   };
 
@@ -956,6 +1313,15 @@ export default function App() {
            return;
         }
 
+        if (isMockUser(sessionUser)) {
+           if (active) {
+              setUser(sessionUser);
+              setView(routeForRole(sessionUser.role));
+              setLoadingAuth(false);
+           }
+           return;
+        }
+
         try {
            const profile = await loadUserProfile(sessionUser);
            if (profile && active) {
@@ -973,16 +1339,42 @@ export default function App() {
      };
 
      const loadDoctors = async () => {
-        const { data } = await supabase.from('doctors').select();
-        if (data && active) setDoctors(data);
+        let remoteDoctors = [];
+        if (supabase) {
+           try {
+              const { data, error } = await supabase.from('doctors').select();
+              if (error) throw error;
+              remoteDoctors = data || [];
+           } catch {
+              remoteDoctors = [];
+           }
+        }
+        if (active) setDoctors(mergeDoctors(remoteDoctors, getLocalDoctors(), DEFAULT_DOCTORS));
      };
 
-     supabase.auth.getSession().then(({ data: { session } }) => {
-        if (active) {
-           loadData(session?.user);
-           loadDoctors();
-        }
-     });
+     const mockSession = getMockSession();
+     loadDoctors();
+
+     if (mockSession) {
+        loadData(mockSession);
+        return () => { active = false; };
+     }
+
+     if (!supabase) {
+        setLoadingAuth(false);
+        return () => { active = false; };
+     }
+
+     supabase.auth.getSession()
+       .then(({ data: { session } }) => {
+          if (active) loadData(session?.user);
+       })
+       .catch(() => {
+          if (active) {
+             setLoadingAuth(false);
+             setView('login');
+          }
+       });
 
      const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
         if (active) loadData(session?.user);
@@ -996,8 +1388,18 @@ export default function App() {
 
   const fetchPatientAppointments = useCallback(async () => {
      if (user?.id) {
-        const { data } = await supabase.from('appointments').select().eq('patient_id', user.id).order('created_at', { ascending: false });
-        if (data) setAppointments(data);
+        if (isMockUser(user) || !supabase) {
+           setAppointments(getLocalPatientAppointments(user.id));
+           return;
+        }
+
+        try {
+           const { data, error } = await supabase.from('appointments').select().eq('patient_id', user.id).order('created_at', { ascending: false });
+           if (error) throw error;
+           if (data) setAppointments(data);
+        } catch {
+           setAppointments(getLocalPatientAppointments(user.id));
+        }
      }
   }, [user]);
 
@@ -1005,8 +1407,18 @@ export default function App() {
      let active = true;
      const load = async () => {
         if (user?.id && user.role === 'patient' && view === 'dashboard') {
-           const { data } = await supabase.from('appointments').select().eq('patient_id', user.id).order('created_at', { ascending: false });
-           if (active && data) setAppointments(data);
+           if (isMockUser(user) || !supabase) {
+              if (active) setAppointments(getLocalPatientAppointments(user.id));
+              return;
+           }
+
+           try {
+              const { data, error } = await supabase.from('appointments').select().eq('patient_id', user.id).order('created_at', { ascending: false });
+              if (error) throw error;
+              if (active && data) setAppointments(data);
+           } catch {
+              if (active) setAppointments(getLocalPatientAppointments(user.id));
+           }
         }
      };
      load();
@@ -1019,7 +1431,14 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-     await supabase.auth.signOut();
+     clearMockSession();
+     if (supabase) {
+        try {
+           await supabase.auth.signOut();
+        } catch {
+           // Local logout should still succeed if the live backend is offline.
+        }
+     }
      setUser(null);
      setView('login');
   };
@@ -1037,31 +1456,60 @@ export default function App() {
          payment_status: 'Unpaid',
          amount: displayAmount(selectedDoctor.price)
      };
-     const { error } = await supabase.from('appointments').insert([appt]);
-     if (!error) {
+
+     if (isMockUser(user) || !supabase) {
+         saveLocalAppointment(appt);
          showToast("Booking request sent successfully!", "success");
          setView('success');
-     } else {
-         showToast("Failed to book: " + error?.message, 'error');
+         return;
+     }
+
+     try {
+         const { error } = await supabase.from('appointments').insert([appt]);
+         if (error) throw error;
+         showToast("Booking request sent successfully!", "success");
+         setView('success');
+     } catch (err) {
+         saveLocalAppointment(appt);
+         showToast(friendlyNetworkError(err, "Saved locally because live booking is unavailable."), 'info');
+         setView('success');
      }
   };
 
   const handlePayCash = async (appt) => {
-     const { error } = await supabase.from('appointments').update({ payment_mode: 'Cash', payment_status: 'Pending Verification' }).eq('id', appt.id);
-     if (!error) {
+     const patch = { payment_mode: 'Cash', payment_status: 'Pending Verification' };
+
+     if (isMockUser(user) || !supabase || appt.isMock) {
+         updateLocalAppointment(appt.id, patch);
          showToast("Selected Cash. Please pay at the clinic.", "info");
          fetchPatientAppointments();
-     } else {
-         showToast(error.message || "Unable to update payment mode.", "error");
+         return;
+     }
+
+     try {
+         const { error } = await supabase.from('appointments').update(patch).eq('id', appt.id);
+         if (error) throw error;
+         showToast("Selected Cash. Please pay at the clinic.", "info");
+         fetchPatientAppointments();
+     } catch (err) {
+         showToast(friendlyNetworkError(err, "Unable to update payment mode."), "error");
      }
   };
 
   const handlePayNow = async (appt) => {
-      const { data: doctor } = await supabase
-        .from('doctors')
-        .select('name, upi_id')
-        .eq('id', appt.doctor_id)
-        .maybeSingle();
+      let doctor = doctors.find((item) => String(item.id) === String(appt.doctor_id));
+      if (!doctor && supabase) {
+        try {
+          const { data } = await supabase
+            .from('doctors')
+            .select('name, upi_id')
+            .eq('id', appt.doctor_id)
+            .maybeSingle();
+          doctor = data;
+        } catch {
+          doctor = null;
+        }
+      }
       const amount = numericAmount(appt.amount);
       const upiId = doctor?.upi_id;
 
@@ -1076,15 +1524,24 @@ export default function App() {
         window.location.href = `upi://pay?${params.toString()}`;
       }
 
-      const { error } = await supabase
-        .from('appointments')
-        .update({ payment_mode: 'UPI', payment_status: 'Pending Verification' })
-        .eq('id', appt.id);
-      if (!error) {
+      const patch = { payment_mode: 'UPI', payment_status: 'Pending Verification' };
+      if (isMockUser(user) || !supabase || appt.isMock) {
+        updateLocalAppointment(appt.id, patch);
         showToast(upiId ? "UPI opened. Payment is pending verification." : "Payment marked for verification.", "info");
         fetchPatientAppointments();
-      } else {
-        showToast(error.message || "Unable to start payment.", "error");
+        return;
+      }
+
+      try {
+        const { error } = await supabase
+          .from('appointments')
+          .update(patch)
+          .eq('id', appt.id);
+        if (error) throw error;
+        showToast(upiId ? "UPI opened. Payment is pending verification." : "Payment marked for verification.", "info");
+        fetchPatientAppointments();
+      } catch (err) {
+        showToast(friendlyNetworkError(err, "Unable to start payment."), "error");
       }
   };
 
