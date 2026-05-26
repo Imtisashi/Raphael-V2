@@ -9,6 +9,7 @@ Raphael is a React, Vite, Supabase, and Capacitor healthcare booking app for pat
 - Doctor discovery by specialty, symptom, and district
 - AI-guided symptom routing with safe, non-diagnostic language
 - Voice input and spoken assistant responses in supported browsers
+- Server-side AI assistant route for OpenAI/Gemini keys, with deterministic local fallback
 - Appointment requests, provider accept/decline flow, and payment verification states
 - Secured Supabase RLS policies for profile, doctor, and appointment data
 - Browser-local fallback doctors, accounts, and appointments when Supabase cannot be reached
@@ -30,8 +31,19 @@ Create a `.env` file with:
 ```env
 VITE_SUPABASE_URL=your-project-url
 VITE_SUPABASE_ANON_KEY=your-publishable-key
+VITE_AI_ASSISTANT_ENDPOINT=/api/ai-assistant
 VITE_ADMIN_UPI_HANDLE=optional-upi-handle
 VITE_ADMIN_NAME=optional-admin-name
+```
+
+For the Vercel AI route, set one or both server-side variables in Vercel:
+
+```env
+OPENAI_API_KEY=your-openai-key
+OPENAI_MODEL=gpt-5.4-mini
+GEMINI_API_KEY=your-gemini-key
+GEMINI_MODEL=gemini-2.0-flash
+AI_PROVIDER=openai
 ```
 
 Install and run:

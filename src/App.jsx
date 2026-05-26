@@ -4,12 +4,14 @@ import {
   ArrowRight, Loader2, EyeOff, Check, LogOut, MessageSquare, Send, 
   ChevronLeft, IndianRupee, Zap, Mail, Lock, Sparkles, ChevronRight, Mic, MicOff, Volume2,
   HeartPulse, Stethoscope, Video, Wallet, TrendingUp, Users, ClipboardCheck, Bell,
-  PhoneCall, MapPinned, BadgeCheck, Timer, ArrowUpRight, Brain, Bone, Eye
+  PhoneCall, MapPinned, BadgeCheck, Timer, ArrowUpRight, Brain, Bone, Eye,
+  Edit3, Save, Bot, AlertTriangle, FileText
 } from 'lucide-react';
 import { supabase } from './lib/supabaseClient';
 import appIcon from '../icons/icon-128.webp';
 
 const APP_ICON = appIcon;
+const AI_ASSISTANT_ENDPOINT = import.meta.env.VITE_AI_ASSISTANT_ENDPOINT || (import.meta.env.PROD ? '/api/ai-assistant' : '');
 
 const SYMPTOM_MAP = {
   head: 'Neurologist', migraine: 'Neurologist', brain: 'Neurologist',
@@ -85,12 +87,52 @@ const EMERGENCY_TERMS = [
   'suicidal',
 ];
 
+const SYMPTOM_RULES = [
+  {
+    specialty: 'Cardiologist',
+    urgency: 'urgent',
+    terms: ['chest pain', 'pressure in chest', 'heart pain', 'palpitation', 'shortness of breath', 'breathless', 'high bp', 'blood pressure'],
+    advice: 'Chest discomfort or breathing trouble can become urgent. If it is severe, sudden, spreading to the arm/jaw, or with sweating/fainting, seek emergency care now.',
+  },
+  {
+    specialty: 'Neurologist',
+    urgency: 'soon',
+    terms: ['migraine', 'severe headache', 'headache', 'dizzy', 'dizziness', 'numbness', 'weakness', 'memory', 'seizure'],
+    advice: 'A neurologist is a good match for recurring headaches, migraine, dizziness, numbness, seizure-like episodes, or nerve symptoms.',
+  },
+  {
+    specialty: 'Dermatologist',
+    urgency: 'routine',
+    terms: ['rash', 'itching', 'skin', 'acne', 'allergy on skin', 'spots', 'eczema', 'hair fall'],
+    advice: 'A dermatologist can help with rashes, acne, itching, hair fall, and skin allergy symptoms.',
+  },
+  {
+    specialty: 'Orthopedic',
+    urgency: 'routine',
+    terms: ['joint', 'knee', 'back pain', 'bone', 'fracture', 'sprain', 'shoulder', 'neck pain', 'arthritis'],
+    advice: 'An orthopedic specialist is a strong fit for joint, back, bone, sprain, fracture, or mobility-related pain.',
+  },
+  {
+    specialty: 'Ophthalmologist',
+    urgency: 'soon',
+    terms: ['eye', 'vision', 'blurred vision', 'red eye', 'eye pain', 'watery eyes', 'sight'],
+    advice: 'An ophthalmologist is best for eye pain, blurred vision, redness, watering, or sight changes.',
+  },
+  {
+    specialty: 'General Physician',
+    urgency: 'routine',
+    terms: ['fever', 'flu', 'cough', 'cold', 'pain', 'stomach', 'vomit', 'diarrhea', 'weakness', 'body ache', 'infection'],
+    advice: 'A general physician is a good first step for fever, flu, cough, stomach issues, weakness, body aches, and general illness.',
+  },
+];
+
 const generateCareGuidance = (input, doctors = []) => {
   const query = input.trim().toLowerCase();
   if (!query) {
     return {
       specialty: null,
       shouldSearch: false,
+      searchQuery: '',
       response: "Tell me what you are feeling, for example fever, chest discomfort, rash, headache, or joint pain.",
     };
   }
@@ -100,31 +142,93 @@ const generateCareGuidance = (input, doctors = []) => {
     return {
       specialty: 'Emergency Care',
       shouldSearch: false,
+      searchQuery: '',
       response: "This may need urgent care. Please contact local emergency services or visit the nearest emergency department now.",
     };
   }
 
-  const matchedKeyword = Object.keys(SYMPTOM_MAP).find(keyword => query.includes(keyword));
-  const specialty = matchedKeyword ? SYMPTOM_MAP[matchedKeyword] : null;
+  const scoredRules = SYMPTOM_RULES
+    .map(rule => ({
+      ...rule,
+      score: rule.terms.reduce((score, term) => score + (query.includes(term) ? term.length : 0), 0),
+    }))
+    .filter(rule => rule.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  const matchedRule = scoredRules[0];
+  const matchedKeyword = !matchedRule && Object.keys(SYMPTOM_MAP).find(keyword => query.includes(keyword));
+  const specialty = matchedRule?.specialty || (matchedKeyword ? SYMPTOM_MAP[matchedKeyword] : null);
   const matchingDoctors = specialty ? doctors.filter(doctor => doctor.specialty === specialty) : [];
 
   if (specialty) {
     const availability = matchingDoctors.length
       ? `I found ${matchingDoctors.length} ${specialty.toLowerCase()} option${matchingDoctors.length === 1 ? '' : 's'} for you.`
       : `I can search for ${specialty.toLowerCase()} options for you.`;
+    const urgencyNote = matchedRule?.urgency === 'urgent'
+      ? 'Please treat this as time-sensitive if symptoms feel intense or sudden.'
+      : 'Book a visit if symptoms persist, worsen, or worry you.';
 
     return {
       specialty,
       shouldSearch: true,
-      response: `${availability} This is guidance, not a diagnosis; choose a doctor or seek urgent care if symptoms feel severe.`,
+      searchQuery: specialty,
+      response: `${availability} ${matchedRule?.advice || 'This is guidance, not a diagnosis.'} ${urgencyNote}`,
     };
   }
 
   return {
     specialty: null,
-    shouldSearch: true,
-    response: "I could not confidently match a specialty. I will open search so you can browse doctors, or try describing the main symptom in a few words.",
+    shouldSearch: false,
+    searchQuery: '',
+    response: "I need one or two more details to route you well. What is the main symptom, how long has it been happening, and is it mild, moderate, or severe?",
   };
+};
+
+const askCareAssistant = async (input, doctors = []) => {
+  const fallbackGuidance = generateCareGuidance(input, doctors);
+  if (!AI_ASSISTANT_ENDPOINT) return { ...fallbackGuidance, provider: 'local' };
+
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const response = await fetch(AI_ASSISTANT_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        message: input,
+        locale: 'en-IN',
+        safety: 'non_diagnostic_triage',
+        preferredProviders: ['openai', 'gemini'],
+        doctors: doctors.slice(0, 20).map(doctor => ({
+          id: doctor.id,
+          name: doctor.name,
+          specialty: doctor.specialty,
+          district: doctor.district,
+          nextSlot: nextSlotFor(doctor),
+        })),
+      }),
+    });
+
+    if (!response.ok) throw new Error('AI endpoint unavailable');
+    const data = await response.json();
+    return {
+      specialty: data.specialty || fallbackGuidance.specialty,
+      shouldSearch: Boolean(data.shouldSearch ?? fallbackGuidance.shouldSearch),
+      searchQuery: data.searchQuery || data.specialty || fallbackGuidance.searchQuery,
+      response: data.response || fallbackGuidance.response,
+      provider: data.provider || 'ai',
+    };
+  } catch {
+    return {
+      ...fallbackGuidance,
+      provider: 'local',
+      response: `${fallbackGuidance.response} I used the built-in triage logic because the AI service is not reachable right now.`,
+    };
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 };
 
 const numericAmount = (value) => {
@@ -139,8 +243,14 @@ const specialtyMeta = (specialty) => SPECIALTY_META[specialty] || FALLBACK_SPECI
 const nextSlotFor = (doctor) => doctor?.slots?.[0] || 'Today';
 const ratingLabel = (rating) => Number(rating || 5).toFixed(1).replace('.0', '');
 const shortDate = (value) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const normalizeSlots = (value) => (
+  Array.isArray(value)
+    ? value
+    : String(value || '').split(',').map(slot => slot.trim()).filter(Boolean)
+);
+const doctorDisplayName = (name) => (String(name || '').startsWith('Dr.') ? name : `Dr. ${name || 'Provider'}`);
 
-const USER_PROFILE_FIELDS = 'id, email, name, role, phone, district, doctorId';
+const USER_PROFILE_FIELDS = 'id, email, name, role, phone, district, address, blood_group, allergies, doctorId';
 const MOCK_OTP_CODE = '123456';
 const STORAGE_KEYS = {
   accounts: 'raphael.mock.accounts',
@@ -322,13 +432,16 @@ const createMockAccount = ({ email, password, name, phone, role, specialty, pric
     role,
     phone: phone.trim(),
     district: 'Dimapur',
+    address: '',
+    blood_group: '',
+    allergies: '',
     isMock: true,
   };
 
   if (role === 'doctor') {
     const doctor = upsertLocalDoctor({
       id: createLocalDoctorId(),
-      name: profile.name.startsWith('Dr.') ? profile.name : `Dr. ${profile.name}`,
+      name: doctorDisplayName(profile.name),
       specialty,
       rating: 5.0,
       reviews: 0,
@@ -365,6 +478,37 @@ const loginMockAccount = (email, password) => {
   return profile;
 };
 
+const updateMockAccount = (userId, patch) => {
+  let updatedProfile = null;
+  const accounts = getMockAccounts().map((account) => {
+    if (String(account.id) !== String(userId)) return account;
+    const updatedAccount = { ...account, ...patch };
+    updatedProfile = withoutPassword(updatedAccount);
+    return updatedAccount;
+  });
+  saveMockAccounts(accounts);
+  if (updatedProfile) saveMockSession(updatedProfile);
+  return updatedProfile;
+};
+
+const updateLocalDoctorProfile = (doctorId, patch) => {
+  let updatedDoctor = null;
+  const doctors = getLocalDoctors().map((doctor) => {
+    if (String(doctor.id) !== String(doctorId)) return doctor;
+    updatedDoctor = { ...doctor, ...patch };
+    return updatedDoctor;
+  });
+  if (!updatedDoctor) {
+    const baseDoctor = DEFAULT_DOCTORS.find((doctor) => String(doctor.id) === String(doctorId));
+    if (baseDoctor) {
+      updatedDoctor = { ...baseDoctor, ...patch };
+      doctors.push(updatedDoctor);
+    }
+  }
+  saveLocalDoctors(doctors);
+  return updatedDoctor;
+};
+
 const friendlyNetworkError = (err, fallback) => {
   const message = err?.message || '';
   if (/failed to fetch|network|fetch/i.test(message)) {
@@ -386,6 +530,9 @@ const profileFromAuthUser = (authUser) => ({
   role: authUser.user_metadata?.role || 'patient',
   phone: authUser.user_metadata?.phone || '',
   district: authUser.user_metadata?.district || 'Dimapur',
+  address: authUser.user_metadata?.address || '',
+  blood_group: authUser.user_metadata?.blood_group || '',
+  allergies: authUser.user_metadata?.allergies || '',
 });
 
 const attachDoctorProfile = async (profile) => {
@@ -803,14 +950,14 @@ function LoginView({ onLogin, showToast }) {
           <div className="pro-hero-strip p-4 text-white">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-bold text-cyan-100">Instant demo onboarding</p>
-                <h2 className="text-2xl font-black mt-1">Verify, book, follow up.</h2>
+                <p className="text-xs font-bold text-cyan-100">Pro care workspace</p>
+                <h2 className="text-3xl font-black mt-1 leading-tight">Sign in to a smarter clinic flow.</h2>
               </div>
               <div className="rounded-lg bg-white/15 p-2 border border-white/20">
                 <Zap size={20} />
               </div>
             </div>
-            <div className="mt-4 grid grid-cols-3 gap-2">
+            <div className="mt-5 grid grid-cols-3 gap-2">
               <div className="rounded-lg bg-white/12 p-2">
                 <p className="text-[10px] font-bold text-cyan-100">OTP</p>
                 <p className="text-sm font-black">Mock</p>
@@ -822,6 +969,16 @@ function LoginView({ onLogin, showToast }) {
               <div className="rounded-lg bg-white/12 p-2">
                 <p className="text-[10px] font-bold text-cyan-100">Voice</p>
                 <p className="text-sm font-black">Assist</p>
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="rounded-lg bg-white/12 border border-white/15 p-3 flex items-center gap-2">
+                <Bot size={17} className="text-cyan-100" />
+                <span className="text-xs font-black">AI triage ready</span>
+              </div>
+              <div className="rounded-lg bg-white/12 border border-white/15 p-3 flex items-center gap-2">
+                <AlertTriangle size={17} className="text-amber-100" />
+                <span className="text-xs font-black">Urgency aware</span>
               </div>
             </div>
           </div>
@@ -952,6 +1109,8 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState([{ sender: 'ai', text: `Hi, I'm Rapha'l Assist. Describe a symptom or tap the mic and I will help you find the right specialist.` }]);
   const [isListening, setIsListening] = useState(false);
+  const [isAssistantThinking, setIsAssistantThinking] = useState(false);
+  const [assistantProvider, setAssistantProvider] = useState(AI_ASSISTANT_ENDPOINT ? 'AI' : 'Local');
   const voiceSupported = useMemo(() => Boolean(window.SpeechRecognition || window.webkitSpeechRecognition), []);
   const chatEndRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -969,28 +1128,35 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
     window.speechSynthesis.speak(utterance);
   }, []);
 
-  const handleSendChat = useCallback((overrideText, speakResponse = false) => {
+  const handleSendChat = useCallback(async (overrideText, speakResponse = false) => {
     const message = (overrideText ?? chatInput).trim();
-    if (!message) return;
+    if (!message || isAssistantThinking) return;
 
     setChatMessages(prev => [...prev, { sender: 'user', text: message }]);
     setChatInput('');
-    setTimeout(() => {
-      const guidance = generateCareGuidance(message, doctors);
-      if (guidance.specialty && guidance.specialty !== 'Emergency Care') {
-        setSearchQuery(guidance.specialty);
-      } else if (guidance.shouldSearch) {
-        setSearchQuery(message);
-      }
-      if (guidance.shouldSearch) {
-        setTimeout(() => setView('search'), 700);
-      }
-      setChatMessages(prev => [...prev, { sender: 'ai', text: guidance.response }]);
-      if (speakResponse) {
-        speak(guidance.response);
-      }
-    }, 350);
-  }, [chatInput, doctors, setSearchQuery, setView, speak]);
+    setIsAssistantThinking(true);
+
+    const guidance = await askCareAssistant(message, doctors);
+    setAssistantProvider(guidance.provider === 'local' ? 'Local' : 'AI');
+    if (guidance.specialty && guidance.specialty !== 'Emergency Care') {
+      setSearchQuery(guidance.searchQuery || guidance.specialty);
+    } else if (guidance.shouldSearch) {
+      setSearchQuery(guidance.searchQuery || message);
+    }
+    if (guidance.shouldSearch) {
+      setTimeout(() => setView('search'), 700);
+    }
+    setChatMessages(prev => [...prev, { sender: 'ai', text: guidance.response }]);
+    setIsAssistantThinking(false);
+
+    if (speakResponse) {
+      window.setTimeout(() => {
+        if (speakResponse) {
+          speak(guidance.response);
+        }
+      }, 50);
+    }
+  }, [chatInput, doctors, isAssistantThinking, setSearchQuery, setView, speak]);
 
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1008,7 +1174,10 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
       }
     };
     recognition.onend = () => setIsListening(false);
-    recognition.onerror = () => setIsListening(false);
+    recognition.onerror = () => {
+      setIsListening(false);
+      setChatMessages(prev => [...prev, { sender: 'ai', text: 'I could not hear that clearly. Please try again, or type the symptom in a few words.' }]);
+    };
     recognitionRef.current = recognition;
 
     return () => recognition.stop();
@@ -1025,8 +1194,12 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
       return;
     }
     setShowChat(true);
-    setIsListening(true);
-    recognitionRef.current.start();
+    try {
+      setIsListening(true);
+      recognitionRef.current.start();
+    } catch {
+      setIsListening(false);
+    }
   };
 
   const featuredDoctors = doctors.slice(0, 3);
@@ -1139,7 +1312,10 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
             <div className="bg-slate-950 text-white p-4 flex justify-between items-center">
               <div className="flex items-center gap-2">
                 <div className="bg-white/15 p-1.5 rounded-lg"><Sparkles size={16} /></div>
-                <span className="font-bold text-sm">Rapha'l Assist</span>
+                <div>
+                  <span className="font-bold text-sm block">Rapha'l Assist</span>
+                  <span className="text-[10px] font-bold text-cyan-100">{assistantProvider} triage</span>
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <button onClick={() => speak(chatMessages[chatMessages.length - 1]?.text || '')} className="bg-white/10 hover:bg-white/20 p-1.5 rounded-md transition-colors"><Volume2 size={16} /></button>
@@ -1154,12 +1330,19 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
                   </div>
                 </div>
               ))}
+              {isAssistantThinking && (
+                <div className="flex justify-start">
+                  <div className="bg-white border border-slate-100 text-slate-500 rounded-lg px-3 py-2 text-sm font-bold shadow-sm flex items-center gap-2">
+                    <Loader2 size={14} className="animate-spin text-cyan-600" /> Thinking
+                  </div>
+                </div>
+              )}
               <div ref={chatEndRef} />
             </div>
             <div className="p-3 bg-white border-t border-slate-100 flex gap-2">
               <button type="button" onClick={toggleVoice} disabled={!voiceSupported} className={`p-2.5 rounded-lg transition-colors ${isListening ? 'bg-red-50 text-red-500' : 'bg-cyan-50 text-cyan-700 hover:bg-cyan-100 disabled:opacity-40'}`}>{isListening ? <MicOff size={16}/> : <Mic size={16}/>}</button>
               <input type="text" placeholder="Type a symptom..." value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendChat()} className="flex-1 bg-slate-100 rounded-lg px-4 py-2 outline-none text-sm focus:ring-2 focus:ring-cyan-500/20 focus:bg-white border border-transparent focus:border-cyan-200 transition-all" />
-              <button onClick={() => handleSendChat()} className="p-2.5 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg transition-colors shadow-md shadow-cyan-500/20"><Send size={16} /></button>
+              <button onClick={() => handleSendChat()} disabled={isAssistantThinking} className="p-2.5 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white rounded-lg transition-colors shadow-md shadow-cyan-500/20"><Send size={16} /></button>
             </div>
           </div>
         )}
@@ -1307,6 +1490,26 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
   );
 }
 
+const appointmentStatusMessage = (appointment) => {
+  if (appointment.status === 'Cancelled') return 'Doctor declined this request. You can book another slot or choose a different specialist.';
+  if (appointment.status === 'Accepted' && appointment.payment_status === 'Unpaid') return 'Doctor accepted your request. Choose UPI or cash to continue.';
+  if (appointment.payment_status === 'Pending Verification') return 'Payment choice is recorded and waiting for clinic verification.';
+  if (appointment.status === 'Confirmed') return 'Your visit is confirmed. Keep this appointment visible at the clinic.';
+  return 'Request sent. The doctor will accept or decline it from their provider console.';
+};
+
+const appointmentSteps = (appointment) => {
+  const accepted = ['Accepted', 'Confirmed'].includes(appointment.status);
+  const declined = appointment.status === 'Cancelled';
+  const paymentStarted = appointment.payment_status && appointment.payment_status !== 'Unpaid';
+  return [
+    { label: 'Requested', done: true },
+    { label: declined ? 'Declined' : 'Doctor review', done: accepted || declined, danger: declined },
+    { label: 'Payment', done: accepted && paymentStarted, disabled: declined },
+    { label: 'Clinic verify', done: appointment.status === 'Confirmed' || appointment.payment_status === 'Pending Verification', disabled: declined },
+  ];
+};
+
 function DashboardView({ appointments, onPayNow, onPayCash }) {
   if (!appointments.length) return (
     <div className="p-6 text-center flex flex-col items-center justify-center h-full app-screen pb-28">
@@ -1359,6 +1562,21 @@ function DashboardView({ appointments, onPayNow, onPayCash }) {
              <div className="mt-3 rounded-lg bg-slate-50 border border-slate-100 px-3 py-2 text-xs font-bold text-slate-500">
                 Payment: {apt.payment_status || 'Unpaid'}
              </div>
+
+             <div className="mt-4 rounded-lg border border-slate-100 bg-white p-3">
+               <div className="flex items-center justify-between gap-2">
+                 {appointmentSteps(apt).map((step, index) => (
+                   <div key={step.label} className="flex-1">
+                     <div className={`h-2 rounded-full ${step.done ? (step.danger ? 'bg-red-400' : 'bg-emerald-400') : step.disabled ? 'bg-slate-100' : 'bg-slate-200'}`} />
+                     <p className={`mt-2 text-[10px] font-black ${step.done ? (step.danger ? 'text-red-600' : 'text-emerald-700') : 'text-slate-400'}`}>{index + 1}. {step.label}</p>
+                   </div>
+                 ))}
+               </div>
+               <div className="mt-4 flex items-start gap-2 text-xs font-bold text-slate-600">
+                 <FileText size={15} className="text-cyan-600 shrink-0 mt-0.5" />
+                 <p>{appointmentStatusMessage(apt)}</p>
+               </div>
+             </div>
              
              {isAwaitingPayment && (
                <div className="mt-6 flex gap-3">
@@ -1373,7 +1591,50 @@ function DashboardView({ appointments, onPayNow, onPayCash }) {
   );
 }
 
-function ProfileView({ user, logout }) {
+function ProfileView({ user, logout, onSaveProfile }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    name: user?.name || '',
+    phone: user?.phone || '',
+    district: user?.district || 'Dimapur',
+    address: user?.address || '',
+    blood_group: user?.blood_group || '',
+    allergies: user?.allergies || '',
+  });
+
+  useEffect(() => {
+    setForm({
+      name: user?.name || '',
+      phone: user?.phone || '',
+      district: user?.district || 'Dimapur',
+      address: user?.address || '',
+      blood_group: user?.blood_group || '',
+      allergies: user?.allergies || '',
+    });
+  }, [user]);
+
+  const updateField = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
+
+  const saveProfile = async () => {
+    setSaving(true);
+    try {
+      await onSaveProfile({
+        name: form.name.trim() || user?.name,
+        phone: form.phone.trim(),
+        district: form.district.trim() || 'Dimapur',
+        address: form.address.trim(),
+        blood_group: form.blood_group.trim(),
+        allergies: form.allergies.trim(),
+      });
+      setIsEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const fieldClass = "w-full bg-slate-50 border border-slate-100 rounded-lg px-5 py-4 text-slate-800 font-bold text-sm outline-none focus:border-cyan-300 focus:ring-4 focus:ring-cyan-100";
+
   return (
     <div className="h-full flex flex-col p-5 overflow-y-auto app-screen pb-28">
       <div className="pro-card p-6 space-y-6">
@@ -1382,7 +1643,12 @@ function ProfileView({ user, logout }) {
             <p className="text-xs font-black text-cyan-700 uppercase">Member profile</p>
             <h1 className="text-3xl font-black text-slate-950 mt-1">Account</h1>
           </div>
-          <button onClick={logout} className="pro-icon-button text-red-600 bg-red-50 border-red-100 hover:bg-red-100"><LogOut size={18} /></button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setIsEditing(prev => !prev)} className="pro-icon-button">
+              {isEditing ? <X size={18} /> : <Edit3 size={18} />}
+            </button>
+            <button onClick={logout} className="pro-icon-button text-red-600 bg-red-50 border-red-100 hover:bg-red-100"><LogOut size={18} /></button>
+          </div>
         </div>
 
         <div className="relative z-10 space-y-6">
@@ -1397,22 +1663,64 @@ function ProfileView({ user, logout }) {
           <div className="space-y-4">
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Full Name</label>
-              <div className="w-full bg-slate-50 border border-slate-100 rounded-lg px-5 py-4 text-slate-800 font-bold text-sm">{user?.name || 'N/A'}</div>
+              {isEditing ? (
+                <input value={form.name} onChange={(e) => updateField('name', e.target.value)} className={fieldClass} />
+              ) : (
+                <div className={fieldClass}>{user?.name || 'N/A'}</div>
+              )}
             </div>
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Email Address</label>
               <div className="w-full bg-slate-50 border border-slate-100 rounded-lg px-5 py-4 text-slate-800 font-bold text-sm break-all">{user?.email || 'N/A'}</div>
             </div>
+            {isEditing && (
+              <>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Address</label>
+                  <input value={form.address} onChange={(e) => updateField('address', e.target.value)} className={fieldClass} placeholder="Home address" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Blood</label>
+                    <input value={form.blood_group} onChange={(e) => updateField('blood_group', e.target.value)} className={fieldClass} placeholder="O+" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Allergies</label>
+                    <input value={form.allergies} onChange={(e) => updateField('allergies', e.target.value)} className={fieldClass} placeholder="None" />
+                  </div>
+                </div>
+              </>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-lg border border-cyan-100 bg-cyan-50 p-4 text-cyan-700">
                 <PhoneCall size={16} />
-                <p className="mt-2 text-xs font-black">{user?.phone || 'No phone'}</p>
+                {isEditing ? (
+                  <input value={form.phone} onChange={(e) => updateField('phone', e.target.value)} className="mt-2 w-full bg-white/70 rounded-md px-2 py-2 text-xs font-black outline-none" placeholder="Phone" />
+                ) : (
+                  <p className="mt-2 text-xs font-black">{user?.phone || 'No phone'}</p>
+                )}
               </div>
               <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4 text-emerald-700">
                 <MapPinned size={16} />
-                <p className="mt-2 text-xs font-black">{user?.district || 'Dimapur'}</p>
+                {isEditing ? (
+                  <input value={form.district} onChange={(e) => updateField('district', e.target.value)} className="mt-2 w-full bg-white/70 rounded-md px-2 py-2 text-xs font-black outline-none" placeholder="District" />
+                ) : (
+                  <p className="mt-2 text-xs font-black">{user?.district || 'Dimapur'}</p>
+                )}
               </div>
             </div>
+            {!isEditing && (user?.address || user?.blood_group || user?.allergies) && (
+              <div className="rounded-lg border border-slate-100 bg-slate-50 p-4 text-slate-600 text-xs font-bold space-y-1">
+                {user?.address && <p>Address: {user.address}</p>}
+                {user?.blood_group && <p>Blood group: {user.blood_group}</p>}
+                {user?.allergies && <p>Allergies: {user.allergies}</p>}
+              </div>
+            )}
+            {isEditing && (
+              <Button onClick={saveProfile} variant="accent" className="w-full" disabled={saving}>
+                {saving ? <Loader2 className="animate-spin" /> : <Save size={16} />} Save Profile
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -1420,10 +1728,41 @@ function ProfileView({ user, logout }) {
   );
 }
 
-function DoctorDashboard({ user, logout, showToast }) {
+function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile }) {
   const [appointments, setAppointments] = useState([]);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [doctorForm, setDoctorForm] = useState({
+    name: user?.name || '',
+    phone: user?.phone || '',
+    district: user?.district || 'Dimapur',
+    specialty: doctor?.specialty || 'General Physician',
+    clinic_name: doctor?.clinic_name || '',
+    location: doctor?.location || '',
+    experience: doctor?.experience || '1 Year',
+    bio: doctor?.bio || '',
+    price: numericAmount(doctor?.price),
+    upi_id: doctor?.upi_id || '',
+    slots: (doctor?.slots || ['09:00 AM', '10:00 AM', '02:00 PM']).join(', '),
+  });
   const doctorId = user?.doctorId;
   const usingMockData = isMockUser(user);
+
+  useEffect(() => {
+    setDoctorForm({
+      name: user?.name || '',
+      phone: user?.phone || '',
+      district: user?.district || 'Dimapur',
+      specialty: doctor?.specialty || 'General Physician',
+      clinic_name: doctor?.clinic_name || '',
+      location: doctor?.location || '',
+      experience: doctor?.experience || '1 Year',
+      bio: doctor?.bio || '',
+      price: numericAmount(doctor?.price),
+      upi_id: doctor?.upi_id || '',
+      slots: (doctor?.slots || ['09:00 AM', '10:00 AM', '02:00 PM']).join(', '),
+    });
+  }, [doctor, user]);
   
   useEffect(() => {
     let active = true;
@@ -1467,6 +1806,39 @@ function DoctorDashboard({ user, logout, showToast }) {
     }
   };
 
+  const updateDoctorField = (field, value) => setDoctorForm(prev => ({ ...prev, [field]: value }));
+
+  const saveDoctorProfile = async () => {
+    setSavingProfile(true);
+    try {
+      const providerName = doctorForm.name.trim();
+      await onSaveProfile(
+        {
+          name: providerName,
+          phone: doctorForm.phone.trim(),
+          district: doctorForm.district.trim() || 'Dimapur',
+        },
+        {
+          name: doctorDisplayName(providerName),
+          specialty: doctorForm.specialty,
+          clinic_name: doctorForm.clinic_name.trim(),
+          location: doctorForm.location.trim(),
+          experience: doctorForm.experience.trim(),
+          bio: doctorForm.bio.trim(),
+          price: displayAmount(doctorForm.price),
+          upi_id: doctorForm.upi_id.trim(),
+          slots: normalizeSlots(doctorForm.slots),
+        }
+      );
+      setProfileOpen(false);
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const inputClass = "w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-cyan-300 focus:ring-4 focus:ring-cyan-100";
+  const pendingAppointments = appointments.filter(a => a.status === 'Pending Approval');
+
   return (
     <div className="min-h-screen app-screen p-5 font-sans space-y-5">
       <div className="pro-card p-5">
@@ -1474,21 +1846,60 @@ function DoctorDashboard({ user, logout, showToast }) {
         <div className="flex items-center gap-3">
           <Avatar name={user?.name} specialty="General Physician" size="md" />
           <div>
-            <h1 className="text-xl font-black text-slate-950 leading-tight">Dr. {user?.name}</h1>
+            <h1 className="text-xl font-black text-slate-950 leading-tight">{doctorDisplayName(user?.name)}</h1>
             <span className="text-xs font-bold text-cyan-700">Provider console</span>
           </div>
         </div>
         <button onClick={logout} className="pro-icon-button text-red-600 bg-red-50 border-red-100 hover:bg-red-100"><LogOut size={18} /></button>
         </div>
         <div className="grid grid-cols-2 gap-3 mt-5">
-          <MetricPill icon={ClipboardCheck} label="Pending" value={appointments.filter(a => a.status === 'Pending Approval').length} tone="text-amber-700 bg-amber-50 border-amber-100" />
+          <MetricPill icon={ClipboardCheck} label="Pending" value={pendingAppointments.length} tone="text-amber-700 bg-amber-50 border-amber-100" />
           <MetricPill icon={CheckCircle} label="Accepted" value={appointments.filter(a => a.status === 'Accepted').length} tone="text-emerald-700 bg-emerald-50 border-emerald-100" />
         </div>
+      </div>
+
+      <div className="pro-card p-5 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <SectionHeader eyebrow="Profile" title="Provider details" />
+          <button onClick={() => setProfileOpen(prev => !prev)} className="pro-icon-button">
+            {profileOpen ? <X size={18} /> : <Edit3 size={18} />}
+          </button>
+        </div>
+        {!profileOpen ? (
+          <div className="grid grid-cols-2 gap-3 text-xs font-bold text-slate-600">
+            <div className="rounded-lg bg-slate-50 border border-slate-100 p-3">{doctor?.specialty || doctorForm.specialty}</div>
+            <div className="rounded-lg bg-slate-50 border border-slate-100 p-3">{displayAmount(doctor?.price || doctorForm.price)}</div>
+            <div className="rounded-lg bg-slate-50 border border-slate-100 p-3 col-span-2">{doctor?.clinic_name || doctorForm.clinic_name || 'Clinic not set'}</div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <input value={doctorForm.name} onChange={(e) => updateDoctorField('name', e.target.value)} className={inputClass} placeholder="Doctor name" />
+            <div className="grid grid-cols-2 gap-3">
+              <input value={doctorForm.phone} onChange={(e) => updateDoctorField('phone', e.target.value)} className={inputClass} placeholder="Phone" />
+              <input value={doctorForm.district} onChange={(e) => updateDoctorField('district', e.target.value)} className={inputClass} placeholder="District" />
+            </div>
+            <select value={doctorForm.specialty} onChange={(e) => updateDoctorField('specialty', e.target.value)} className={inputClass}>
+              {uniqueSpecialties().map(specialty => <option key={specialty} value={specialty}>{specialty}</option>)}
+            </select>
+            <div className="grid grid-cols-2 gap-3">
+              <input type="number" value={doctorForm.price} onChange={(e) => updateDoctorField('price', e.target.value)} className={inputClass} placeholder="Fee" />
+              <input value={doctorForm.upi_id} onChange={(e) => updateDoctorField('upi_id', e.target.value)} className={inputClass} placeholder="UPI ID" />
+            </div>
+            <input value={doctorForm.clinic_name} onChange={(e) => updateDoctorField('clinic_name', e.target.value)} className={inputClass} placeholder="Clinic name" />
+            <input value={doctorForm.location} onChange={(e) => updateDoctorField('location', e.target.value)} className={inputClass} placeholder="Clinic location" />
+            <input value={doctorForm.experience} onChange={(e) => updateDoctorField('experience', e.target.value)} className={inputClass} placeholder="Experience" />
+            <textarea value={doctorForm.bio} onChange={(e) => updateDoctorField('bio', e.target.value)} className={`${inputClass} min-h-24 resize-none`} placeholder="Short professional bio" />
+            <input value={doctorForm.slots} onChange={(e) => updateDoctorField('slots', e.target.value)} className={inputClass} placeholder="Slots, comma separated" />
+            <Button onClick={saveDoctorProfile} variant="accent" className="w-full" disabled={savingProfile}>
+              {savingProfile ? <Loader2 className="animate-spin" /> : <Save size={16} />} Save Provider Profile
+            </Button>
+          </div>
+        )}
       </div>
       
       <div className="space-y-6">
         <SectionHeader eyebrow="Today" title="Appointment requests" />
-        {appointments.filter(a => a.status === 'Pending Approval').map(apt => (
+        {pendingAppointments.map(apt => (
           <div key={apt.id} className="pro-card p-5">
             <div className="flex items-start justify-between gap-4 mb-5">
               <div>
@@ -1503,10 +1914,24 @@ function DoctorDashboard({ user, logout, showToast }) {
             </div>
           </div>
         ))}
-        {appointments.length === 0 && (
+        {pendingAppointments.length === 0 && (
           <div className="text-center py-12 pro-card border-dashed">
             <ClipboardCheck size={34} className="mx-auto text-slate-300 mb-4" />
-            <p className="text-slate-500 font-bold">No new appointments.</p>
+            <p className="text-slate-500 font-bold">No pending appointment requests.</p>
+          </div>
+        )}
+        {appointments.filter(a => a.status !== 'Pending Approval').length > 0 && (
+          <div className="space-y-3">
+            <SectionHeader eyebrow="History" title="Handled requests" />
+            {appointments.filter(a => a.status !== 'Pending Approval').map(apt => (
+              <div key={apt.id} className="pro-card p-4 flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-black text-slate-950">{apt.patient_name}</p>
+                  <p className="text-xs font-bold text-slate-500">{shortDate(apt.appointment_date)} at {apt.slot}</p>
+                </div>
+                <Badge type={apt.status === 'Accepted' ? 'success' : 'warning'}>{apt.status}</Badge>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -1712,6 +2137,59 @@ export default function App() {
      setView('login');
   };
 
+  const handleSaveProfile = async (profilePatch, doctorPatch = null) => {
+     if (!user) return null;
+
+     const cleanProfilePatch = Object.fromEntries(
+        Object.entries(profilePatch || {}).filter(([, value]) => value !== undefined)
+     );
+     const nextProfile = { ...user, ...cleanProfilePatch };
+
+     if (isMockUser(user) || !supabase) {
+        const savedProfile = updateMockAccount(user.id, cleanProfilePatch) || nextProfile;
+        if (doctorPatch && user.doctorId) {
+           const updatedDoctor = updateLocalDoctorProfile(user.doctorId, doctorPatch);
+           if (updatedDoctor) {
+              setDoctors(prev => mergeDoctors([updatedDoctor], getLocalDoctors(), prev, DEFAULT_DOCTORS));
+           }
+        }
+        setUser(savedProfile);
+        showToast('Profile updated.');
+        return savedProfile;
+     }
+
+     try {
+        const { data, error } = await supabase
+          .from('users')
+          .update(cleanProfilePatch)
+          .eq('id', user.id)
+          .select(USER_PROFILE_FIELDS)
+          .single();
+        if (error) throw error;
+
+        if (doctorPatch && user.doctorId) {
+           const { data: updatedDoctor, error: doctorError } = await supabase
+             .from('doctors')
+             .update(doctorPatch)
+             .eq('id', user.doctorId)
+             .select()
+             .single();
+           if (doctorError) throw doctorError;
+           if (updatedDoctor) {
+              setDoctors(prev => mergeDoctors([updatedDoctor], prev, getLocalDoctors(), DEFAULT_DOCTORS));
+           }
+        }
+
+        const savedProfile = { ...user, ...data };
+        setUser(savedProfile);
+        showToast('Profile updated.');
+        return savedProfile;
+     } catch (err) {
+        showToast(friendlyNetworkError(err, 'Unable to update profile.'), 'error');
+        throw err;
+     }
+  };
+
   const initiateBooking = async () => {
      if (!selectedSlot || !selectedDoctor || !user) return;
      const appt = {
@@ -1814,6 +2292,10 @@ export default function App() {
       }
   };
 
+  const doctorProfile = user?.doctorId
+    ? doctors.find((doctor) => String(doctor.id) === String(user.doctorId))
+    : null;
+
   if (loadingAuth) {
      return (
        <div className="min-h-screen flex items-center justify-center app-canvas">
@@ -1837,7 +2319,7 @@ export default function App() {
         <div className="w-full sm:max-w-[430px] bg-white min-h-screen sm:min-h-[calc(100vh-2rem)] sm:my-4 relative app-frame overflow-hidden flex flex-col">
            {view === 'login' && <LoginView onLogin={handleLogin} showToast={showToast} />}
            {view === 'admin' && <AdminDashboard logout={handleLogout} doctors={doctors} />}
-           {view === 'doctor_dashboard' && <DoctorDashboard user={user} logout={handleLogout} showToast={showToast} />}
+           {view === 'doctor_dashboard' && <DoctorDashboard user={user} doctor={doctorProfile} logout={handleLogout} showToast={showToast} onSaveProfile={handleSaveProfile} />}
            
            {['home', 'search', 'detail', 'dashboard', 'profile', 'success'].includes(view) && user && user.role === 'patient' && (
               <div className="flex-1 flex flex-col h-full overflow-hidden relative">
@@ -1846,7 +2328,7 @@ export default function App() {
                     {view === 'search' && <SearchView searchQuery={searchQuery} setSearchQuery={setSearchQuery} doctors={doctors} setView={setView} setSelectedDoctor={setSelectedDoctor} activeCategory={activeCategory} setActiveCategory={setActiveCategory} />}
                     {view === 'detail' && <DoctorDetailView doctor={selectedDoctor} setView={setView} selectedSlot={selectedSlot} setSelectedSlot={setSelectedSlot} selectedDate={selectedDate} handleBook={initiateBooking} />}
                     {view === 'dashboard' && <DashboardView appointments={appointments} onPayNow={handlePayNow} onPayCash={handlePayCash} />}
-                    {view === 'profile' && <ProfileView user={user} logout={handleLogout} />}
+                    {view === 'profile' && <ProfileView user={user} logout={handleLogout} onSaveProfile={handleSaveProfile} />}
                     {view === 'success' && (
                        <div className="flex flex-col items-center justify-center text-center p-6 h-full app-screen">
                           <div className="pro-card p-8 w-full">
