@@ -2,9 +2,14 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   Search, Calendar, Clock, MapPin, Star, Shield, Activity, User, CheckCircle, X,
   ArrowRight, Loader2, EyeOff, Check, LogOut, MessageSquare, Send, 
-  ChevronLeft, IndianRupee, Zap, Mail, Lock, Sparkles, ChevronRight, Mic, MicOff, Volume2
+  ChevronLeft, IndianRupee, Zap, Mail, Lock, Sparkles, ChevronRight, Mic, MicOff, Volume2,
+  HeartPulse, Stethoscope, Video, Wallet, TrendingUp, Users, ClipboardCheck, Bell,
+  PhoneCall, MapPinned, BadgeCheck, Timer, ArrowUpRight, Brain, Bone, Eye
 } from 'lucide-react';
 import { supabase } from './lib/supabaseClient';
+import appIcon from '../icons/icon-128.webp';
+
+const APP_ICON = appIcon;
 
 const SYMPTOM_MAP = {
   head: 'Neurologist', migraine: 'Neurologist', brain: 'Neurologist',
@@ -13,6 +18,59 @@ const SYMPTOM_MAP = {
   bone: 'Orthopedic', joint: 'Orthopedic', knee: 'Orthopedic', back: 'Orthopedic',
   skin: 'Dermatologist', rash: 'Dermatologist', acne: 'Dermatologist',
   eye: 'Ophthalmologist', vision: 'Ophthalmologist',
+};
+
+const SPECIALTY_META = {
+  Neurologist: {
+    icon: Brain,
+    label: 'Neuro',
+    tone: 'from-indigo-500 to-sky-500',
+    soft: 'bg-indigo-50 text-indigo-700 border-indigo-100',
+    ring: 'ring-indigo-100',
+  },
+  Cardiologist: {
+    icon: HeartPulse,
+    label: 'Heart',
+    tone: 'from-rose-500 to-orange-400',
+    soft: 'bg-rose-50 text-rose-700 border-rose-100',
+    ring: 'ring-rose-100',
+  },
+  'General Physician': {
+    icon: Stethoscope,
+    label: 'Primary',
+    tone: 'from-emerald-500 to-teal-500',
+    soft: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+    ring: 'ring-emerald-100',
+  },
+  Orthopedic: {
+    icon: Bone,
+    label: 'Ortho',
+    tone: 'from-amber-500 to-lime-500',
+    soft: 'bg-amber-50 text-amber-700 border-amber-100',
+    ring: 'ring-amber-100',
+  },
+  Dermatologist: {
+    icon: Sparkles,
+    label: 'Skin',
+    tone: 'from-fuchsia-500 to-pink-500',
+    soft: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100',
+    ring: 'ring-fuchsia-100',
+  },
+  Ophthalmologist: {
+    icon: Eye,
+    label: 'Vision',
+    tone: 'from-cyan-500 to-blue-500',
+    soft: 'bg-cyan-50 text-cyan-700 border-cyan-100',
+    ring: 'ring-cyan-100',
+  },
+};
+
+const FALLBACK_SPECIALTY_META = {
+  icon: Shield,
+  label: 'Care',
+  tone: 'from-slate-700 to-cyan-500',
+  soft: 'bg-slate-50 text-slate-700 border-slate-100',
+  ring: 'ring-slate-100',
 };
 
 const EMERGENCY_TERMS = [
@@ -76,6 +134,11 @@ const numericAmount = (value) => {
 };
 
 const displayAmount = (value) => `Rs. ${numericAmount(value)}`;
+const uniqueSpecialties = () => Array.from(new Set(Object.values(SYMPTOM_MAP)));
+const specialtyMeta = (specialty) => SPECIALTY_META[specialty] || FALLBACK_SPECIALTY_META;
+const nextSlotFor = (doctor) => doctor?.slots?.[0] || 'Today';
+const ratingLabel = (rating) => Number(rating || 5).toFixed(1).replace('.0', '');
+const shortDate = (value) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
 const USER_PROFILE_FIELDS = 'id, email, name, role, phone, district, doctorId';
 const MOCK_OTP_CODE = '123456';
@@ -435,13 +498,14 @@ const saveUserProfile = async (authUser, profileInput) => {
 // PREMIUM UI COMPONENTS
 // ==========================================
 const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false }) => {
-  const baseStyle = "px-6 py-3.5 rounded-xl font-bold transition-all duration-200 transform active:scale-[0.98] flex items-center justify-center gap-2 outline-none focus:ring-4";
+  const baseStyle = "px-6 py-3.5 rounded-lg font-bold transition-all duration-200 active:scale-[0.98] flex items-center justify-center gap-2 outline-none focus:ring-4";
   const variants = {
-    primary: "bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 text-white shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/35 hover:brightness-105 focus:ring-cyan-500/20",
+    primary: "bg-slate-950 text-white shadow-lg shadow-slate-900/20 hover:bg-slate-800 focus:ring-slate-900/15",
+    accent: "bg-gradient-to-r from-cyan-500 via-sky-500 to-emerald-500 text-white shadow-lg shadow-cyan-500/20 hover:brightness-105 focus:ring-cyan-500/20",
     secondary: "bg-white text-slate-800 border border-slate-200 shadow-sm hover:border-cyan-200 hover:bg-cyan-50/50 focus:ring-cyan-100",
     danger: "bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 focus:ring-red-100",
     ghost: "bg-transparent text-slate-500 hover:text-cyan-700 hover:bg-cyan-50 focus:ring-cyan-50",
-    outline: "bg-transparent border-2 border-slate-200 text-slate-600 hover:border-cyan-500 hover:text-cyan-700 focus:ring-cyan-100"
+    outline: "bg-transparent border border-slate-200 text-slate-600 hover:border-cyan-500 hover:text-cyan-700 focus:ring-cyan-100"
   };
   return (
     <button onClick={onClick} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${disabled ? 'opacity-50 cursor-not-allowed saturate-50' : ''} ${className}`}>
@@ -454,26 +518,103 @@ const Badge = ({ children, type = 'info' }) => {
   const styles = {
     info: "bg-sky-50 text-sky-700 border border-sky-100",
     success: "bg-emerald-50 text-emerald-700 border border-emerald-100",
-    warning: "bg-amber-50 text-amber-700 border border-amber-100"
+    warning: "bg-amber-50 text-amber-700 border border-amber-100",
+    dark: "bg-slate-950 text-white border border-slate-800"
   };
   return (
-    <span className={`px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-widest shadow-sm ${styles[type]}`}>
+    <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-md text-[10px] font-extrabold uppercase shadow-sm ${styles[type]}`}>
       {children}
     </span>
   );
 };
 
-const Avatar = ({ name, url, size = "md" }) => {
-  const sizes = { sm: "w-10 h-10 text-sm", md: "w-14 h-14 text-xl", lg: "w-24 h-24 text-4xl" };
+const Avatar = ({ name, url, size = "md", specialty }) => {
+  const sizes = { sm: "w-10 h-10 text-sm", md: "w-14 h-14 text-xl", lg: "w-24 h-24 text-4xl", xl: "w-28 h-28 text-5xl" };
   const initial = name ? name.replace('Dr. ', '').charAt(0).toUpperCase() : 'D';
+  const meta = specialtyMeta(specialty);
   
-  if (url) return <img src={url} alt={name} className={`${sizes[size]} rounded-2xl object-cover shadow-md ring-2 ring-white`} />;
+  if (url) return <img src={url} alt={name} className={`${sizes[size]} rounded-lg object-cover shadow-md ring-4 ring-white`} />;
   
   return (
-    <div className={`${sizes[size]} rounded-2xl bg-gradient-to-br from-sky-50 via-white to-emerald-50 border border-cyan-100 flex items-center justify-center text-cyan-700 font-black shadow-inner relative group`}>
+    <div className={`${sizes[size]} rounded-lg bg-gradient-to-br ${meta.tone} flex items-center justify-center text-white font-black shadow-lg shadow-slate-900/10 ring-4 ring-white relative overflow-hidden`}>
+      <div className="absolute inset-0 pro-avatar-pattern" />
       {initial}
-      <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full shadow-sm"></div>
+      <div className="absolute bottom-1 right-1 w-3 h-3 bg-emerald-400 border-2 border-white rounded-full shadow-sm"></div>
     </div>
+  );
+};
+
+const SectionHeader = ({ eyebrow, title, action, onAction }) => (
+  <div className="flex items-end justify-between gap-4">
+    <div>
+      {eyebrow && <p className="text-[11px] font-black uppercase text-cyan-700">{eyebrow}</p>}
+      <h2 className="text-xl font-black text-slate-950">{title}</h2>
+    </div>
+    {action && (
+      <button onClick={onAction} className="text-sm font-bold text-slate-600 hover:text-cyan-700 flex items-center gap-1">
+        {action} <ChevronRight size={15} />
+      </button>
+    )}
+  </div>
+);
+
+const MetricPill = ({ icon: Icon, label, value, tone = 'text-cyan-700 bg-cyan-50 border-cyan-100' }) => (
+  <div className={`rounded-lg border px-3 py-2 ${tone}`}>
+    <div className="flex items-center gap-2">
+      {React.createElement(Icon, { size: 15 })}
+      <span className="text-[11px] font-black">{label}</span>
+    </div>
+    <div className="mt-1 text-lg font-black text-slate-950">{value}</div>
+  </div>
+);
+
+const DoctorCard = ({ doctor, onClick, featured = false }) => {
+  const meta = specialtyMeta(doctor.specialty);
+  const Icon = meta.icon;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`group pro-card w-full text-left ${featured ? 'p-5' : 'p-4'} hover:-translate-y-1 hover:shadow-xl hover:shadow-cyan-500/10`}
+    >
+      <div className="flex items-start gap-4">
+        <Avatar name={doctor.name} url={doctor.image} specialty={doctor.specialty} size={featured ? 'lg' : 'md'} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="font-black text-slate-950 leading-tight truncate">{doctor.name}</h3>
+              <p className="text-xs font-bold text-slate-500 mt-1">{doctor.specialty}</p>
+            </div>
+            <div className={`shrink-0 rounded-lg border px-2.5 py-1 text-xs font-black ${meta.soft}`}>
+              {displayAmount(doctor.price)}
+            </div>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] font-bold">
+            <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-amber-700 border border-amber-100">
+              <Star size={12} className="fill-amber-400 text-amber-400" /> {ratingLabel(doctor.rating)}
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-2 py-1 text-slate-600 border border-slate-100">
+              <MapPin size={12} /> {doctor.district || 'Nagaland'}
+            </span>
+            <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 ${meta.soft}`}>
+              {React.createElement(Icon, { size: 12 })} {meta.label}
+            </span>
+          </div>
+
+          <div className="mt-4 flex items-center justify-between rounded-lg bg-slate-50 border border-slate-100 px-3 py-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
+              <Timer size={14} className="text-emerald-600" />
+              <span>{nextSlotFor(doctor)}</span>
+            </div>
+            <span className="inline-flex items-center gap-1 text-xs font-black text-cyan-700">
+              Book <ArrowUpRight size={13} className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+            </span>
+          </div>
+        </div>
+      </div>
+    </button>
   );
 };
 
@@ -646,14 +787,44 @@ function LoginView({ onLogin, showToast }) {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-emerald-50 flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans">
-      <div className={`w-full max-w-md bg-white border border-cyan-100 p-8 sm:p-10 rounded-3xl shadow-[0_24px_80px_-36px_rgba(14,165,233,0.55)] z-10 transition-all duration-700 transform ${isVisible ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-10 opacity-0 scale-95'}`}>
-        <div className="text-center mb-10">
-          <div className="w-20 h-20 bg-gradient-to-br from-sky-400 via-cyan-400 to-emerald-400 rounded-3xl mx-auto flex items-center justify-center mb-6 shadow-xl shadow-cyan-500/25 transform hover:rotate-6 transition-transform duration-500">
-             <Shield className="text-white" size={36} strokeWidth={2.5} />
+    <div className="auth-screen min-h-screen flex flex-col items-center justify-center p-5 relative overflow-hidden font-sans">
+      <div className={`w-full max-w-md pro-auth-card p-6 sm:p-8 z-10 transition-all duration-700 ${isVisible ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-8 opacity-0 scale-95'}`}>
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-7">
+            <div className="flex items-center gap-3">
+              <img src={APP_ICON} alt="Rapha'l" className="w-14 h-14 rounded-lg object-cover shadow-lg shadow-cyan-900/10" />
+              <div>
+                <h1 className="text-3xl font-black text-slate-950">Rapha'l</h1>
+                <p className="text-xs font-black text-cyan-700 uppercase">Care OS</p>
+              </div>
+            </div>
+            <Badge type="dark"><Shield size={12} /> Pro</Badge>
           </div>
-          <h1 className="text-4xl sm:text-5xl font-black text-slate-950 mb-3 tracking-tight">Rapha'l</h1>
-          <p className="text-cyan-600 text-xs font-black tracking-[0.3em] uppercase">Bright Healthcare Access</p>
+          <div className="pro-hero-strip p-4 text-white">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold text-cyan-100">Instant demo onboarding</p>
+                <h2 className="text-2xl font-black mt-1">Verify, book, follow up.</h2>
+              </div>
+              <div className="rounded-lg bg-white/15 p-2 border border-white/20">
+                <Zap size={20} />
+              </div>
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              <div className="rounded-lg bg-white/12 p-2">
+                <p className="text-[10px] font-bold text-cyan-100">OTP</p>
+                <p className="text-sm font-black">Mock</p>
+              </div>
+              <div className="rounded-lg bg-white/12 p-2">
+                <p className="text-[10px] font-bold text-cyan-100">Doctors</p>
+                <p className="text-sm font-black">Live</p>
+              </div>
+              <div className="rounded-lg bg-white/12 p-2">
+                <p className="text-[10px] font-bold text-cyan-100">Voice</p>
+                <p className="text-sm font-black">Assist</p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {mode === 'login' ? (
@@ -710,13 +881,13 @@ function LoginView({ onLogin, showToast }) {
             </div>
 
             <div className="rounded-2xl border border-cyan-100 bg-cyan-50 px-5 py-4 text-center">
-              <span className="block text-[10px] font-black uppercase tracking-[0.25em] text-cyan-700 mb-2">Demo OTP</span>
-              <span className="text-3xl font-black tracking-[0.35em] text-slate-900">{otpCode}</span>
+              <span className="block text-[10px] font-black uppercase text-cyan-700 mb-2">Demo OTP</span>
+              <span className="text-3xl font-black text-slate-900">{otpCode}</span>
             </div>
 
             <div className="group relative">
               <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none transition-colors group-focus-within:text-cyan-500 text-slate-400"><Lock size={18} /></div>
-              <input inputMode="numeric" maxLength="6" placeholder="Enter OTP" value={otpInput} onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ''))} className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-5 py-4 text-slate-900 placeholder-slate-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 outline-none transition-all text-center tracking-[0.35em] font-black" required />
+              <input inputMode="numeric" maxLength="6" placeholder="Enter OTP" value={otpInput} onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ''))} className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-5 py-4 text-slate-900 placeholder-slate-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 outline-none transition-all text-center font-black" required />
             </div>
 
             {error && <div className="bg-red-50 border border-red-100 text-red-600 text-xs font-semibold text-center py-3 rounded-xl">{error}</div>}
@@ -858,83 +1029,127 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
     recognitionRef.current.start();
   };
 
+  const featuredDoctors = doctors.slice(0, 3);
+  const specialties = uniqueSpecialties();
+
   return (
-    <div className="space-y-6 pb-24 flex-1 bg-gradient-to-br from-sky-50 via-white to-emerald-50 min-h-full">
-      <div className="relative overflow-hidden bg-white px-6 py-9 rounded-b-3xl shadow-[0_20px_70px_-45px_rgba(14,165,233,0.7)] border-b border-cyan-100">
-        <div className="relative z-10 flex justify-between items-center mb-6">
-           <div>
-             <p className="text-sm font-bold text-cyan-600 mb-1 tracking-wide uppercase">Care starts here</p>
-             <h1 className="text-3xl font-black text-slate-950 tracking-tight">Find your <br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500">Specialist.</span></h1>
-           </div>
-           <div className="w-12 h-12 bg-cyan-50 rounded-2xl flex items-center justify-center shadow-inner border border-cyan-100">
-             <User size={24} className="text-cyan-600" />
-           </div>
+    <div className="relative space-y-6 pb-28 flex-1 app-screen min-h-full">
+      <div className="pro-home-hero px-6 pt-8 pb-6">
+        <div className="relative z-10 flex justify-between items-start mb-6">
+          <div>
+            <Badge type="success"><BadgeCheck size={12} /> Verified network</Badge>
+            <h1 className="mt-4 text-4xl font-black leading-[1.02] text-slate-950">
+              Healthcare that feels fast, bright, and personal.
+            </h1>
+          </div>
+          <button type="button" className="pro-icon-button">
+            <Bell size={19} />
+          </button>
         </div>
 
-        <div className="relative shadow-[0_12px_40px_rgba(14,165,233,0.10)] rounded-2xl group">
-            <input type="text" placeholder="Search doctors, specialties, symptoms..."
-              className="w-full h-14 pl-12 pr-14 rounded-2xl bg-slate-50 border border-cyan-100 text-slate-800 placeholder-slate-400 outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 transition-all text-sm font-medium"
-              onChange={(e) => { setSearchQuery(e.target.value); if (e.target.value.length > 2) setView('search'); }}
-            />
-            <Search className="absolute left-4 top-4 text-slate-400 group-focus-within:text-cyan-500 transition-colors" size={20} />
-            <button type="button" onClick={toggleVoice} className={`absolute right-2 top-2 p-2 rounded-xl transition-colors ${isListening ? 'bg-red-50 text-red-500' : 'bg-cyan-50 text-cyan-600 hover:bg-cyan-100'}`}>
-              {isListening ? <MicOff size={16}/> : <Mic size={16}/>}
-            </button>
+        <div className="relative z-10 pro-command-bar">
+          <Search className="absolute left-4 top-4 text-slate-400" size={20} />
+          <input
+            type="text"
+            placeholder="Search doctors, symptoms, specialties"
+            className="w-full h-14 pl-12 pr-14 rounded-lg bg-white text-slate-900 placeholder-slate-400 outline-none font-semibold"
+            onChange={(e) => { setSearchQuery(e.target.value); if (e.target.value.length > 2) setView('search'); }}
+          />
+          <button type="button" onClick={toggleVoice} className={`absolute right-2 top-2 p-2.5 rounded-lg transition-colors ${isListening ? 'bg-red-50 text-red-500' : 'bg-slate-950 text-white hover:bg-slate-800'}`}>
+            {isListening ? <MicOff size={16}/> : <Mic size={16}/>}
+          </button>
         </div>
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          {['fever', 'chest pain', 'skin rash'].map(prompt => (
-            <button key={prompt} onClick={() => { setShowChat(true); handleSendChat(prompt); }} className="rounded-xl border border-cyan-100 bg-cyan-50/70 px-3 py-2 text-xs font-black text-cyan-700 hover:bg-cyan-100 transition-colors">
-              {prompt}
+
+        <div className="relative z-10 mt-4 grid grid-cols-3 gap-2">
+          {[
+            { prompt: 'fever', icon: Activity },
+            { prompt: 'chest pain', icon: HeartPulse },
+            { prompt: 'skin rash', icon: Sparkles },
+          ].map(({ prompt, icon: Icon }) => (
+            <button key={prompt} onClick={() => { setShowChat(true); handleSendChat(prompt); }} className="quick-chip">
+              {React.createElement(Icon, { size: 14 })} {prompt}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="px-6 space-y-4">
-        <div className="flex justify-between items-end mb-2">
-          <h2 className="text-lg font-black text-slate-800">Top Rated Doctors</h2>
-          <button onClick={() => setView('search')} className="text-sm font-bold text-cyan-700 hover:text-cyan-900 flex items-center gap-1">See all <ChevronRight size={14}/></button>
+      <div className="px-5 space-y-6">
+        <div className="grid grid-cols-3 gap-3">
+          <MetricPill icon={Users} label="Doctors" value={doctors.length || 3} tone="text-cyan-700 bg-cyan-50 border-cyan-100" />
+          <MetricPill icon={Video} label="Assist" value="Voice" tone="text-indigo-700 bg-indigo-50 border-indigo-100" />
+          <MetricPill icon={Wallet} label="Pay" value="UPI" tone="text-emerald-700 bg-emerald-50 border-emerald-100" />
         </div>
-        
-        <div className="grid gap-4">
-          {doctors.slice(0, 3).map(doctor => (
-            <div key={doctor.id} onClick={() => { setSelectedDoctor(doctor); setView('detail'); }} className="group bg-white p-4 rounded-2xl border border-cyan-50 shadow-sm hover:shadow-xl hover:shadow-cyan-500/10 hover:-translate-y-1 transition-all duration-300 cursor-pointer flex gap-4 items-center">
-              <Avatar name={doctor.name} url={doctor.image} size="md" />
-              <div className="flex-1 flex flex-col justify-center">
-                <h3 className="font-bold text-slate-900 group-hover:text-cyan-700 transition-colors">{doctor.name}</h3>
-                <p className="text-xs font-semibold text-slate-500 mb-2">{doctor.specialty}</p>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100/50">
-                    <Star size={12} className="text-amber-500 fill-amber-500" />
-                    <span className="text-[10px] font-black text-amber-700">{doctor.rating || '5.0'}</span>
-                  </div>
-                  <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400">
-                    <MapPin size={12} /> {doctor.district}
-                  </div>
-                </div>
-              </div>
+
+        <div className="pro-card p-5 overflow-hidden">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-black text-slate-500 uppercase">Rapha'l Assist</p>
+              <h2 className="text-2xl font-black text-slate-950 mt-1">Smart symptom routing</h2>
+              <p className="text-sm font-semibold text-slate-500 mt-2">Describe symptoms by voice or text and jump straight to matching specialists.</p>
             </div>
-          ))}
+            <button onClick={() => setShowChat(true)} className="h-14 w-14 rounded-lg bg-slate-950 text-white flex items-center justify-center shadow-lg shadow-slate-900/20">
+              <MessageSquare size={22} />
+            </button>
+          </div>
         </div>
+
+        <section className="space-y-3">
+          <SectionHeader eyebrow="Explore" title="Care specialties" />
+          <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-1">
+            {specialties.map((specialty) => {
+              const meta = specialtyMeta(specialty);
+              const Icon = meta.icon;
+              return (
+                <button
+                  key={specialty}
+                  onClick={() => { setSearchQuery(specialty); setView('search'); }}
+                  className="min-w-[112px] pro-card p-4"
+                >
+                  <div className={`h-10 w-10 rounded-lg bg-gradient-to-br ${meta.tone} text-white flex items-center justify-center mb-3 shadow-md shadow-slate-900/10`}>
+                    <Icon size={19} />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-black text-sm text-slate-950">{meta.label}</p>
+                    <p className="text-[11px] font-bold text-slate-500 truncate">{specialty}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <SectionHeader eyebrow="Recommended" title="Top specialists" action="See all" onAction={() => setView('search')} />
+          <div className="grid gap-3">
+            {featuredDoctors.map((doctor, index) => (
+              <DoctorCard
+                key={doctor.id}
+                doctor={doctor}
+                featured={index === 0}
+                onClick={() => { setSelectedDoctor(doctor); setView('detail'); }}
+              />
+            ))}
+          </div>
+        </section>
       </div>
 
-      <div className="fixed bottom-24 right-6 z-50 flex flex-col items-end">
+      <div className="absolute bottom-24 right-5 z-50 flex flex-col items-end">
         {showChat && (
-          <div className="bg-white/95 backdrop-blur-2xl rounded-3xl shadow-[0_24px_70px_-25px_rgba(14,165,233,0.38)] w-[85vw] sm:w-80 flex flex-col border border-cyan-100 mb-4 overflow-hidden transform animate-in slide-in-from-bottom-4 fade-in duration-300">
-            <div className="bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 text-white p-4 flex justify-between items-center">
+          <div className="bg-white/95 backdrop-blur-2xl rounded-lg shadow-[0_24px_70px_-25px_rgba(15,23,42,0.38)] w-[85vw] sm:w-80 flex flex-col border border-slate-200 mb-4 overflow-hidden transform animate-in slide-in-from-bottom-4 fade-in duration-300">
+            <div className="bg-slate-950 text-white p-4 flex justify-between items-center">
               <div className="flex items-center gap-2">
-                <div className="bg-white/20 p-1.5 rounded-lg"><Sparkles size={16} /></div>
+                <div className="bg-white/15 p-1.5 rounded-lg"><Sparkles size={16} /></div>
                 <span className="font-bold text-sm">Rapha'l Assist</span>
               </div>
               <div className="flex items-center gap-2">
-                <button onClick={() => speak(chatMessages[chatMessages.length - 1]?.text || '')} className="bg-white/10 hover:bg-white/20 p-1.5 rounded-full transition-colors"><Volume2 size={16} /></button>
-                <button onClick={() => setShowChat(false)} className="bg-white/10 hover:bg-white/20 p-1.5 rounded-full transition-colors"><X size={16} /></button>
+                <button onClick={() => speak(chatMessages[chatMessages.length - 1]?.text || '')} className="bg-white/10 hover:bg-white/20 p-1.5 rounded-md transition-colors"><Volume2 size={16} /></button>
+                <button onClick={() => setShowChat(false)} className="bg-white/10 hover:bg-white/20 p-1.5 rounded-md transition-colors"><X size={16} /></button>
               </div>
             </div>
             <div className="h-64 overflow-y-auto p-4 space-y-4 bg-slate-50/50">
               {chatMessages.map((msg, i) => (
                 <div key={i} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] p-3 text-sm shadow-sm ${msg.sender === 'user' ? 'bg-cyan-500 text-white rounded-2xl rounded-br-sm' : 'bg-white border border-cyan-50 text-slate-700 rounded-2xl rounded-bl-sm font-medium'}`}>
+                  <div className={`max-w-[85%] p-3 text-sm shadow-sm rounded-lg ${msg.sender === 'user' ? 'bg-cyan-600 text-white' : 'bg-white border border-slate-100 text-slate-700 font-medium'}`}>
                     {msg.text}
                   </div>
                 </div>
@@ -942,13 +1157,13 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
               <div ref={chatEndRef} />
             </div>
             <div className="p-3 bg-white border-t border-slate-100 flex gap-2">
-              <button type="button" onClick={toggleVoice} disabled={!voiceSupported} className={`p-2.5 rounded-xl transition-colors ${isListening ? 'bg-red-50 text-red-500' : 'bg-cyan-50 text-cyan-700 hover:bg-cyan-100 disabled:opacity-40'}`}>{isListening ? <MicOff size={16}/> : <Mic size={16}/>}</button>
-              <input type="text" placeholder="Type a symptom..." value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendChat()} className="flex-1 bg-slate-100 rounded-xl px-4 py-2 outline-none text-sm focus:ring-2 focus:ring-cyan-500/20 focus:bg-white border border-transparent focus:border-cyan-200 transition-all" />
-              <button onClick={() => handleSendChat()} className="p-2.5 bg-cyan-500 hover:bg-cyan-600 text-white rounded-xl transition-colors shadow-md shadow-cyan-500/20"><Send size={16} /></button>
+              <button type="button" onClick={toggleVoice} disabled={!voiceSupported} className={`p-2.5 rounded-lg transition-colors ${isListening ? 'bg-red-50 text-red-500' : 'bg-cyan-50 text-cyan-700 hover:bg-cyan-100 disabled:opacity-40'}`}>{isListening ? <MicOff size={16}/> : <Mic size={16}/>}</button>
+              <input type="text" placeholder="Type a symptom..." value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendChat()} className="flex-1 bg-slate-100 rounded-lg px-4 py-2 outline-none text-sm focus:ring-2 focus:ring-cyan-500/20 focus:bg-white border border-transparent focus:border-cyan-200 transition-all" />
+              <button onClick={() => handleSendChat()} className="p-2.5 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg transition-colors shadow-md shadow-cyan-500/20"><Send size={16} /></button>
             </div>
           </div>
         )}
-        <button onClick={() => setShowChat(!showChat)} className="p-4 rounded-full bg-gradient-to-r from-sky-500 via-cyan-500 to-emerald-500 text-white shadow-2xl shadow-cyan-500/30 hover:scale-105 active:scale-95 transition-all duration-300">
+        <button onClick={() => setShowChat(!showChat)} className="p-4 rounded-lg bg-slate-950 text-white shadow-2xl shadow-slate-900/25 hover:scale-105 active:scale-95 transition-all duration-300">
           {showChat ? <X size={24} /> : <MessageSquare size={24} />}
         </button>
       </div>
@@ -970,40 +1185,32 @@ function SearchView({ searchQuery, setSearchQuery, doctors, setView, setSelected
   }, [doctors, searchQuery, activeCategory]);
 
   return (
-    <div className="h-full flex flex-col bg-gradient-to-br from-sky-50 via-white to-emerald-50 min-h-screen pb-24">
-      <div className="sticky top-0 bg-white/90 backdrop-blur-xl z-20 pt-4 pb-3 px-4 border-b border-cyan-100 shadow-sm">
+    <div className="h-full flex flex-col app-screen min-h-screen pb-28">
+      <div className="sticky top-0 bg-white/95 backdrop-blur-xl z-20 pt-4 pb-4 px-5 border-b border-slate-100 shadow-sm">
         <div className="flex items-center gap-3 mb-4">
-          <button onClick={() => setView('home')} className="p-2.5 bg-cyan-50 hover:bg-cyan-100 rounded-full transition-colors text-cyan-700"><ChevronLeft size={20}/></button>
-          <div className="flex-1 relative group">
+          <button onClick={() => setView('home')} className="pro-icon-button"><ChevronLeft size={20}/></button>
+          <div className="flex-1 relative group pro-command-bar shadow-none">
             <Search className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-cyan-500 transition-colors" size={18} />
-            <input autoFocus type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Find your doctor..." className="w-full bg-slate-50 focus:bg-white border border-cyan-100 focus:border-cyan-300 rounded-2xl py-3 pl-11 pr-4 outline-none focus:ring-4 focus:ring-cyan-100 transition-all font-medium text-sm" />
+            <input autoFocus type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Find your doctor..." className="w-full bg-white rounded-lg py-3 pl-11 pr-4 outline-none font-semibold text-sm" />
           </div>
         </div>
         <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
           {['All', ...Array.from(new Set(Object.values(SYMPTOM_MAP)))].map(cat => (
-            <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-5 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all shadow-sm ${activeCategory === cat ? 'bg-cyan-500 text-white' : 'bg-white text-slate-600 border border-cyan-100 hover:border-cyan-300'}`}>{cat}</button>
+            <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-4 py-2 rounded-lg text-xs font-black whitespace-nowrap transition-all border ${activeCategory === cat ? 'bg-slate-950 text-white border-slate-950 shadow-md shadow-slate-900/15' : 'bg-white text-slate-600 border-slate-200 hover:border-cyan-300'}`}>{cat}</button>
           ))}
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        <SectionHeader eyebrow={`${filteredDoctors.length} matches`} title={searchQuery ? `Results for ${searchQuery}` : 'Browse specialists'} />
         {filteredDoctors.length === 0 && (
-           <div className="text-center py-20 text-slate-400 font-medium">No specialists found for this search.</div>
+           <div className="text-center py-16 pro-card border-dashed">
+             <Search size={34} className="mx-auto text-slate-300 mb-4" />
+             <h3 className="text-lg font-black text-slate-800">No specialists found</h3>
+             <p className="text-sm font-semibold text-slate-500 mt-2">Try a symptom like fever, chest pain, rash, headache, or joint pain.</p>
+           </div>
         )}
         {filteredDoctors.map(doctor => (
-          <div key={doctor.id} onClick={() => { setSelectedDoctor(doctor); setView('detail'); }} className="bg-white p-4 rounded-2xl shadow-sm hover:shadow-lg hover:shadow-cyan-500/10 border border-cyan-50 cursor-pointer flex gap-4 group transition-all duration-300 hover:-translate-y-1">
-            <Avatar name={doctor.name} url={doctor.image} size="md" />
-            <div className="flex-1">
-              <div className="flex justify-between items-start">
-                 <h3 className="font-bold text-slate-900 group-hover:text-cyan-700 transition-colors">{doctor.name}</h3>
-                 <span className="bg-cyan-50 text-cyan-700 font-black text-xs px-2 py-1 rounded-lg">{displayAmount(doctor.price)}</span>
-              </div>
-              <p className="text-xs font-semibold text-slate-500 mb-2">{doctor.specialty}</p>
-              <div className="flex items-center gap-4 text-[11px] font-bold text-slate-400">
-                <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-md"><Star size={12} className="fill-amber-400 text-amber-400"/> {doctor.rating || '5.0'}</span>
-                <span className="flex items-center gap-1"><MapPin size={12}/> {doctor.district || 'Nagaland'}</span>
-              </div>
-            </div>
-          </div>
+          <DoctorCard key={doctor.id} doctor={doctor} onClick={() => { setSelectedDoctor(doctor); setView('detail'); }} />
         ))}
       </div>
     </div>
@@ -1012,48 +1219,69 @@ function SearchView({ searchQuery, setSearchQuery, doctors, setView, setSelected
 
 function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, selectedDate, handleBook }) {
   if (!doctor) return null;
+  const meta = specialtyMeta(doctor.specialty);
+  const Icon = meta.icon;
+  const slots = doctor.slots?.length ? doctor.slots : ['09:00 AM', '11:00 AM', '02:00 PM'];
+
   return (
-    <div className="h-full flex flex-col bg-gradient-to-br from-sky-50 via-white to-emerald-50">
-      <div className="relative h-64 bg-cyan-500 shrink-0 rounded-b-3xl shadow-lg overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-sky-400 via-cyan-500 to-emerald-400" />
-        <button onClick={() => { setSelectedSlot(null); setView('search'); }} className="absolute top-6 left-6 z-20 p-2.5 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-full text-white transition-colors"><ChevronLeft size={20} /></button>
-        
-        <div className="absolute -bottom-16 left-8 z-20">
-           <Avatar name={doctor.name} url={doctor.image} size="lg" />
+    <div className="h-full flex flex-col app-screen">
+      <div className="relative shrink-0 px-6 pt-6 pb-7 overflow-hidden pro-detail-hero text-white">
+        <button onClick={() => { setSelectedSlot(null); setView('search'); }} className="relative z-20 p-2.5 bg-white/15 hover:bg-white/25 backdrop-blur-md rounded-lg text-white transition-colors border border-white/20"><ChevronLeft size={20} /></button>
+
+        <div className="relative z-10 mt-8 flex items-end justify-between gap-5">
+          <div className="min-w-0">
+            <div className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/15 px-3 py-1.5 text-xs font-black text-white">
+              <Icon size={13} /> {doctor.specialty}
+            </div>
+            <h1 className="mt-4 text-4xl font-black leading-[1.03]">{doctor.name}</h1>
+            <p className="mt-3 text-sm font-semibold text-cyan-50">{doctor.clinic_name || doctor.location || 'Verified Rapha\'l provider'}</p>
+          </div>
+          <Avatar name={doctor.name} url={doctor.image} specialty={doctor.specialty} size="xl" />
+        </div>
+
+        <div className="relative z-10 mt-6 grid grid-cols-3 gap-2">
+          <div className="rounded-lg bg-white/15 border border-white/15 p-3">
+            <p className="text-[10px] font-bold text-cyan-50">Rating</p>
+            <p className="text-lg font-black">{ratingLabel(doctor.rating)}</p>
+          </div>
+          <div className="rounded-lg bg-white/15 border border-white/15 p-3">
+            <p className="text-[10px] font-bold text-cyan-50">Experience</p>
+            <p className="text-lg font-black">{doctor.experience || '5 Years'}</p>
+          </div>
+          <div className="rounded-lg bg-white/15 border border-white/15 p-3">
+            <p className="text-[10px] font-bold text-cyan-50">Next</p>
+            <p className="text-lg font-black">{nextSlotFor(doctor).replace(' AM', '').replace(' PM', '')}</p>
+          </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto pt-20 px-8 pb-32 space-y-8">
-        <div>
-           <div className="flex justify-between items-start mb-2">
-             <h1 className="text-3xl font-black text-slate-900 tracking-tight leading-none">{doctor.name}</h1>
-           </div>
-           <p className="text-cyan-700 font-bold text-sm mb-4">{doctor.specialty}</p>
-           <div className="flex gap-2">
-              <Badge type="success"><Shield size={10} className="inline mr-1"/>Verified</Badge>
-              <Badge type="info"><Star size={10} className="inline mr-1"/>{doctor.rating || '5.0'}</Badge>
-           </div>
-        </div>
-
-        <div className="space-y-3">
-          <h3 className="font-black text-lg text-slate-800">About Specialist</h3>
-          <p className="text-slate-500 text-sm leading-relaxed font-medium">{doctor.bio || "Leading specialist available for consultation. Bringing years of experience and dedicated patient care to Rapha'l Health."}</p>
-        </div>
-
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-             <h3 className="font-black text-lg text-slate-800 flex items-center gap-2">Select Time</h3>
-              <div className="bg-cyan-50 px-3 py-1 rounded-lg text-xs font-bold text-cyan-700 border border-cyan-100">{selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric'})}</div>
+      <div className="flex-1 overflow-y-auto px-5 py-6 pb-36 space-y-5">
+        <div className="pro-card p-5">
+          <SectionHeader eyebrow="About" title="Specialist profile" />
+          <p className="text-slate-600 text-sm leading-relaxed font-semibold mt-3">{doctor.bio || "Leading specialist available for consultation. Bringing years of experience and dedicated patient care to Rapha'l Health."}</p>
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className={`rounded-lg border px-3 py-3 ${meta.soft}`}>
+              <Shield size={16} />
+              <p className="mt-2 text-xs font-black">Verified provider</p>
+            </div>
+            <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-3 text-amber-700">
+              <Star size={16} className="fill-amber-400 text-amber-400" />
+              <p className="mt-2 text-xs font-black">{doctor.reviews || 0} reviews</p>
+            </div>
           </div>
+        </div>
+
+        <div className="pro-card p-5 space-y-4">
+          <SectionHeader eyebrow={shortDate(selectedDate)} title="Choose a time" />
           <div className="grid grid-cols-3 gap-3">
-            {doctor.slots?.map(slot => (
+            {slots.map(slot => (
                 <button 
                   key={slot} 
                   onClick={() => setSelectedSlot(slot)} 
-                  className={`py-3.5 rounded-2xl text-xs font-bold transition-all duration-300 border-2 outline-none focus:ring-4 ${
+                  className={`py-3.5 rounded-lg text-xs font-black transition-all duration-300 border outline-none focus:ring-4 ${
                     selectedSlot === slot 
-                      ? 'bg-cyan-50 border-cyan-500 text-cyan-700 shadow-sm focus:ring-cyan-500/20'
-                      : 'bg-white border-cyan-50 text-slate-500 hover:border-cyan-300 hover:bg-cyan-50/60 focus:ring-cyan-100'
+                      ? 'bg-slate-950 border-slate-950 text-white shadow-lg shadow-slate-900/15 focus:ring-slate-900/20'
+                      : 'bg-white border-slate-200 text-slate-600 hover:border-cyan-300 hover:bg-cyan-50/60 focus:ring-cyan-100'
                   }`}
                 >
                   {slot}
@@ -1063,13 +1291,15 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
         </div>
       </div>
       
-      {/* Floating Action Area */}
-      <div className="absolute bottom-0 left-0 w-full bg-white/90 backdrop-blur-xl border-t border-cyan-100 p-6 pb-8 z-30 shadow-[0_-20px_50px_rgba(14,165,233,0.10)] rounded-t-3xl">
-        <div className="flex justify-between items-center mb-4 px-2">
-           <span className="text-sm font-bold text-slate-500">Consultation Fee</span>
-           <span className="text-2xl font-black text-cyan-700">{displayAmount(doctor.price)}</span>
+      <div className="absolute bottom-0 left-0 w-full bg-white/95 backdrop-blur-xl border-t border-slate-100 p-5 pb-6 z-30 shadow-[0_-20px_50px_rgba(15,23,42,0.10)]">
+        <div className="flex justify-between items-center mb-4">
+           <div>
+             <span className="text-xs font-black text-slate-500 uppercase">Consultation</span>
+             <p className="text-sm font-semibold text-slate-500">{selectedSlot || 'Select a slot to continue'}</p>
+           </div>
+           <span className="text-3xl font-black text-slate-950">{displayAmount(doctor.price)}</span>
         </div>
-        <Button className="w-full shadow-cyan-500/30" onClick={handleBook} disabled={!selectedSlot}>
+        <Button variant="accent" className="w-full" onClick={handleBook} disabled={!selectedSlot}>
            {selectedSlot ? `Confirm Booking for ${selectedSlot}` : 'Select a Time Slot'}
         </Button>
       </div>
@@ -1079,27 +1309,36 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
 
 function DashboardView({ appointments, onPayNow, onPayCash }) {
   if (!appointments.length) return (
-    <div className="p-8 text-center flex flex-col items-center justify-center h-full bg-gradient-to-br from-sky-50 via-white to-emerald-50 pb-24">
-      <div className="w-24 h-24 bg-cyan-50 rounded-full flex items-center justify-center mb-6 border border-cyan-100"><Calendar size={40} className="text-cyan-400" /></div>
-      <h2 className="text-2xl font-black text-slate-800 mb-2">No Visits Yet</h2>
-      <p className="text-slate-500 font-medium text-sm">Your upcoming appointments will appear here.</p>
+    <div className="p-6 text-center flex flex-col items-center justify-center h-full app-screen pb-28">
+      <div className="pro-card p-8 w-full">
+        <div className="w-20 h-20 bg-gradient-to-br from-cyan-500 to-emerald-500 rounded-lg flex items-center justify-center mb-6 mx-auto shadow-lg shadow-cyan-500/20"><Calendar size={36} className="text-white" /></div>
+        <h2 className="text-2xl font-black text-slate-950 mb-2">No visits yet</h2>
+        <p className="text-slate-500 font-semibold text-sm">Booked appointments, approvals, and payment status will appear here.</p>
+      </div>
     </div>
   );
   
   return (
-    <div className="p-6 space-y-6 bg-gradient-to-br from-sky-50 via-white to-emerald-50 min-h-full pb-32">
-       <div className="flex items-center gap-3 mb-2">
-         <div className="p-2 bg-cyan-100 text-cyan-700 rounded-xl"><Activity size={20} /></div>
-         <h2 className="text-2xl font-black text-slate-800">My Visits</h2>
+    <div className="p-5 space-y-5 app-screen min-h-full pb-32">
+       <div className="pro-card p-5">
+         <div className="flex items-center justify-between">
+           <div>
+             <p className="text-xs font-black text-cyan-700 uppercase">Care timeline</p>
+             <h2 className="text-3xl font-black text-slate-950 mt-1">My visits</h2>
+           </div>
+           <div className="h-12 w-12 bg-slate-950 text-white rounded-lg flex items-center justify-center">
+             <ClipboardCheck size={22} />
+           </div>
+         </div>
        </div>
        
        {appointments.map(apt => {
          const isAwaitingPayment = apt.status === 'Accepted' && apt.payment_status === 'Unpaid';
          return (
-           <div key={apt.id} className="bg-white rounded-2xl p-6 shadow-sm border border-cyan-50 hover:shadow-md hover:shadow-cyan-500/10 transition-shadow">
+           <div key={apt.id} className="pro-card p-5">
              <div className="flex justify-between items-start mb-6">
                <div>
-                 <h3 className="text-lg font-black text-slate-900 group-hover:text-cyan-700">{apt.doctor_name}</h3>
+                 <h3 className="text-lg font-black text-slate-950">{apt.doctor_name}</h3>
                  <span className={`inline-flex items-center gap-1 text-[10px] uppercase font-black px-2.5 py-1 rounded-lg mt-2 ${
                     apt.status === 'Confirmed' ? 'bg-emerald-50 text-emerald-600' :
                     apt.status === 'Accepted' ? 'bg-cyan-50 text-cyan-700' :
@@ -1107,21 +1346,24 @@ function DashboardView({ appointments, onPayNow, onPayCash }) {
                     'bg-amber-50 text-amber-600'
                  }`}>{apt.status}</span>
                </div>
-               <div className="bg-slate-50 border border-slate-100 px-4 py-2 rounded-2xl text-center shadow-sm">
-                  <span className="text-[10px] font-black text-slate-400 block uppercase tracking-wider">{new Date(apt.appointment_date).toLocaleDateString('en-US', { month: 'short' })}</span>
-                  <span className="text-xl font-black text-slate-800">{new Date(apt.appointment_date).getDate()}</span>
+               <div className="bg-slate-950 text-white px-4 py-2 rounded-lg text-center shadow-sm">
+                  <span className="text-[10px] font-black text-cyan-100 block uppercase">{new Date(apt.appointment_date).toLocaleDateString('en-US', { month: 'short' })}</span>
+                  <span className="text-xl font-black text-white">{new Date(apt.appointment_date).getDate()}</span>
                </div>
              </div>
              
-             <div className="flex gap-6 mb-2 text-sm font-bold text-slate-500 bg-slate-50 p-4 rounded-2xl">
-                <span className="flex items-center gap-2"><Clock size={16} className="text-cyan-500"/> {apt.slot}</span>
-                <span className="flex items-center gap-2"><IndianRupee size={16} className="text-cyan-500"/> {displayAmount(apt.amount)}</span>
+             <div className="grid grid-cols-2 gap-3 mb-2 text-sm font-bold text-slate-600">
+                <span className="flex items-center gap-2 bg-slate-50 p-3 rounded-lg border border-slate-100"><Clock size={16} className="text-cyan-500"/> {apt.slot}</span>
+                <span className="flex items-center gap-2 bg-slate-50 p-3 rounded-lg border border-slate-100"><IndianRupee size={16} className="text-emerald-500"/> {displayAmount(apt.amount)}</span>
+             </div>
+             <div className="mt-3 rounded-lg bg-slate-50 border border-slate-100 px-3 py-2 text-xs font-bold text-slate-500">
+                Payment: {apt.payment_status || 'Unpaid'}
              </div>
              
              {isAwaitingPayment && (
                <div className="mt-6 flex gap-3">
-                 <Button onClick={() => onPayNow(apt)} className="flex-1 text-sm py-3 shadow-none">Pay via UPI</Button>
-                 <Button onClick={() => onPayCash(apt)} variant="secondary" className="flex-1 text-sm py-3 border-2">Pay Cash</Button>
+                 <Button onClick={() => onPayNow(apt)} variant="accent" className="flex-1 text-sm py-3 shadow-none">Pay via UPI</Button>
+                 <Button onClick={() => onPayCash(apt)} variant="secondary" className="flex-1 text-sm py-3">Pay Cash</Button>
                </div>
              )}
            </div>
@@ -1133,38 +1375,44 @@ function DashboardView({ appointments, onPayNow, onPayCash }) {
 
 function ProfileView({ user, logout }) {
   return (
-    <div className="h-full flex flex-col p-6 overflow-y-auto bg-gradient-to-br from-sky-50 via-white to-emerald-50 pb-24">
-      <div className="flex items-center gap-3 mb-8">
-         <div className="p-2 bg-cyan-100 text-cyan-700 rounded-xl"><User size={20} /></div>
-         <h1 className="text-2xl font-black text-slate-900">My Profile</h1>
-      </div>
+    <div className="h-full flex flex-col p-5 overflow-y-auto app-screen pb-28">
+      <div className="pro-card p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-black text-cyan-700 uppercase">Member profile</p>
+            <h1 className="text-3xl font-black text-slate-950 mt-1">Account</h1>
+          </div>
+          <button onClick={logout} className="pro-icon-button text-red-600 bg-red-50 border-red-100 hover:bg-red-100"><LogOut size={18} /></button>
+        </div>
 
-      <div className="bg-white p-8 rounded-2xl border border-cyan-50 shadow-sm space-y-6 relative overflow-hidden">
-        
         <div className="relative z-10 space-y-6">
-          <div className="flex items-center gap-4 mb-8">
-            <div className="w-16 h-16 rounded-2xl bg-cyan-50 flex items-center justify-center text-cyan-700 font-bold text-2xl border-2 border-white shadow-md">
-              {user?.name?.charAt(0).toUpperCase()}
-            </div>
+          <div className="flex items-center gap-4">
+            <Avatar name={user?.name} specialty="General Physician" size="lg" />
             <div>
-              <h2 className="text-xl font-black text-slate-800">{user?.name}</h2>
-              <Badge type="info">Patient Account</Badge>
+              <h2 className="text-2xl font-black text-slate-950">{user?.name}</h2>
+              <Badge type="info"><BadgeCheck size={12} /> {user?.role || 'patient'} account</Badge>
             </div>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Full Name</label>
-              <div className="w-full bg-slate-50 border border-cyan-50 rounded-2xl px-5 py-4 text-slate-800 font-bold text-sm">{user?.name || 'N/A'}</div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Full Name</label>
+              <div className="w-full bg-slate-50 border border-slate-100 rounded-lg px-5 py-4 text-slate-800 font-bold text-sm">{user?.name || 'N/A'}</div>
             </div>
             <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Email Address</label>
-              <div className="w-full bg-slate-50 border border-cyan-50 rounded-2xl px-5 py-4 text-slate-800 font-bold text-sm">{user?.email || 'N/A'}</div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5">Email Address</label>
+              <div className="w-full bg-slate-50 border border-slate-100 rounded-lg px-5 py-4 text-slate-800 font-bold text-sm break-all">{user?.email || 'N/A'}</div>
             </div>
-          </div>
-          
-          <div className="pt-6 mt-6 border-t border-slate-100">
-              <Button onClick={logout} variant="danger" className="w-full py-4"><LogOut size={18} /> Sign Out Securely</Button>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg border border-cyan-100 bg-cyan-50 p-4 text-cyan-700">
+                <PhoneCall size={16} />
+                <p className="mt-2 text-xs font-black">{user?.phone || 'No phone'}</p>
+              </div>
+              <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4 text-emerald-700">
+                <MapPinned size={16} />
+                <p className="mt-2 text-xs font-black">{user?.district || 'Dimapur'}</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1220,33 +1468,45 @@ function DoctorDashboard({ user, logout, showToast }) {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-emerald-50 p-6 font-sans">
-      <div className="flex justify-between items-center mb-10 bg-white p-4 rounded-2xl shadow-sm border border-cyan-50">
+    <div className="min-h-screen app-screen p-5 font-sans space-y-5">
+      <div className="pro-card p-5">
+        <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <Avatar name={user?.name} size="sm" />
+          <Avatar name={user?.name} specialty="General Physician" size="md" />
           <div>
-            <h1 className="text-lg font-black text-slate-900 leading-tight">Dr. {user?.name}</h1>
-            <span className="text-xs font-bold text-cyan-700">Provider Console</span>
+            <h1 className="text-xl font-black text-slate-950 leading-tight">Dr. {user?.name}</h1>
+            <span className="text-xs font-bold text-cyan-700">Provider console</span>
           </div>
         </div>
-        <button onClick={logout} className="p-3 bg-red-50 text-red-600 rounded-2xl hover:bg-red-100 transition-colors"><LogOut size={18} /></button>
+        <button onClick={logout} className="pro-icon-button text-red-600 bg-red-50 border-red-100 hover:bg-red-100"><LogOut size={18} /></button>
+        </div>
+        <div className="grid grid-cols-2 gap-3 mt-5">
+          <MetricPill icon={ClipboardCheck} label="Pending" value={appointments.filter(a => a.status === 'Pending Approval').length} tone="text-amber-700 bg-amber-50 border-amber-100" />
+          <MetricPill icon={CheckCircle} label="Accepted" value={appointments.filter(a => a.status === 'Accepted').length} tone="text-emerald-700 bg-emerald-50 border-emerald-100" />
+        </div>
       </div>
       
       <div className="space-y-6">
-        <h2 className="text-xl font-black text-slate-800">Requests ({appointments.filter(a => a.status === 'Pending Approval').length})</h2>
+        <SectionHeader eyebrow="Today" title="Appointment requests" />
         {appointments.filter(a => a.status === 'Pending Approval').map(apt => (
-          <div key={apt.id} className="bg-white p-6 rounded-2xl shadow-sm border border-cyan-50">
-            <h3 className="font-black text-lg text-slate-800 mb-1">{apt.patient_name}</h3>
-            <p className="text-sm font-bold text-slate-500 mb-6 flex items-center gap-2"><Calendar size={14}/> {new Date(apt.appointment_date).toLocaleDateString()} at {apt.slot}</p>
+          <div key={apt.id} className="pro-card p-5">
+            <div className="flex items-start justify-between gap-4 mb-5">
+              <div>
+                <h3 className="font-black text-lg text-slate-950 mb-1">{apt.patient_name}</h3>
+                <p className="text-sm font-bold text-slate-500 flex items-center gap-2"><Calendar size={14}/> {shortDate(apt.appointment_date)} at {apt.slot}</p>
+              </div>
+              <Badge type="warning">New</Badge>
+            </div>
             <div className="flex gap-3">
-              <Button onClick={() => handleAction(apt.id, 'accept')} className="flex-1 py-3 text-sm shadow-none"><Check size={16}/> Accept</Button>
-              <Button onClick={() => handleAction(apt.id, 'reject')} variant="secondary" className="flex-1 py-3 text-sm border-2"><X size={16}/> Decline</Button>
+              <Button onClick={() => handleAction(apt.id, 'accept')} variant="accent" className="flex-1 py-3 text-sm shadow-none"><Check size={16}/> Accept</Button>
+              <Button onClick={() => handleAction(apt.id, 'reject')} variant="secondary" className="flex-1 py-3 text-sm"><X size={16}/> Decline</Button>
             </div>
           </div>
         ))}
         {appointments.length === 0 && (
-          <div className="text-center py-10 bg-white rounded-2xl border border-dashed border-cyan-200">
-            <p className="text-slate-400 font-bold">No new appointments.</p>
+          <div className="text-center py-12 pro-card border-dashed">
+            <ClipboardCheck size={34} className="mx-auto text-slate-300 mb-4" />
+            <p className="text-slate-500 font-bold">No new appointments.</p>
           </div>
         )}
       </div>
@@ -1256,19 +1516,28 @@ function DoctorDashboard({ user, logout, showToast }) {
 
 function AdminDashboard({ logout, doctors }) {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-emerald-50 text-slate-900 p-6 font-sans">
-      <div className="flex justify-between items-center mb-10">
-        <h1 className="text-2xl font-black flex items-center gap-2 tracking-tight"><Shield className="text-cyan-600"/> System Admin</h1>
-        <button onClick={logout} className="p-3 bg-red-50 text-red-600 rounded-2xl hover:bg-red-100 transition-colors"><LogOut size={18} /></button>
+    <div className="min-h-screen app-screen text-slate-900 p-5 font-sans space-y-5">
+      <div className="pro-card p-5">
+        <div className="flex justify-between items-center">
+          <div>
+            <p className="text-xs font-black text-cyan-700 uppercase">Operations</p>
+            <h1 className="text-3xl font-black flex items-center gap-2 text-slate-950"><Shield className="text-cyan-600"/> Admin</h1>
+          </div>
+          <button onClick={logout} className="pro-icon-button text-red-600 bg-red-50 border-red-100 hover:bg-red-100"><LogOut size={18} /></button>
+        </div>
+        <div className="grid grid-cols-2 gap-3 mt-5">
+          <MetricPill icon={Users} label="Providers" value={doctors.length} tone="text-cyan-700 bg-cyan-50 border-cyan-100" />
+          <MetricPill icon={TrendingUp} label="Status" value="Live" tone="text-emerald-700 bg-emerald-50 border-emerald-100" />
+        </div>
       </div>
-      <div className="bg-white border border-cyan-50 p-6 rounded-2xl shadow-sm">
-        <h2 className="text-lg font-bold mb-6 text-slate-700">Registered Providers ({doctors.length})</h2>
+      <div className="pro-card p-5">
+        <SectionHeader eyebrow="Directory" title="Registered providers" />
         <div className="space-y-3">
           {doctors.map(doc => (
-            <div key={doc.id} className="bg-slate-50 p-5 rounded-2xl border border-cyan-50 flex justify-between items-center hover:border-cyan-200 transition-colors">
+            <div key={doc.id} className="bg-slate-50 p-4 rounded-lg border border-slate-100 flex justify-between items-center hover:border-cyan-200 transition-colors mt-3">
               <div>
-                <h3 className="font-bold text-slate-900 text-lg">{doc.name}</h3>
-                <p className="text-sm font-medium text-cyan-700">{doc.specialty}</p>
+                <h3 className="font-black text-slate-950 text-lg">{doc.name}</h3>
+                <p className="text-sm font-bold text-cyan-700">{doc.specialty}</p>
               </div>
               <ChevronRight size={20} className="text-slate-500" />
             </div>
@@ -1546,20 +1815,26 @@ export default function App() {
   };
 
   if (loadingAuth) {
-     return <div className="min-h-screen flex items-center justify-center bg-sky-50"><Loader2 className="animate-spin text-cyan-500" size={40} strokeWidth={3} /></div>;
+     return (
+       <div className="min-h-screen flex items-center justify-center app-canvas">
+         <div className="pro-card p-6 flex items-center gap-4">
+           <img src={APP_ICON} alt="Rapha'l" className="w-12 h-12 rounded-lg object-cover" />
+           <Loader2 className="animate-spin text-cyan-500" size={28} strokeWidth={3} />
+         </div>
+       </div>
+     );
   }
 
   return (
-     <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-emerald-50 font-sans text-slate-900 flex justify-center selection:bg-cyan-100 relative">
-        {/* Dynamic Island Toast */}
+     <div className="min-h-screen app-canvas font-sans text-slate-900 flex justify-center selection:bg-cyan-100 relative">
         {notification && (
-          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] bg-white/95 backdrop-blur-xl border border-cyan-100 text-slate-900 px-5 py-3 rounded-full shadow-[0_18px_50px_rgba(14,165,233,0.18)] flex items-center gap-3 animate-in slide-in-from-top-10 fade-in duration-300">
+          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] bg-white/95 backdrop-blur-xl border border-slate-200 text-slate-900 px-5 py-3 rounded-lg shadow-[0_18px_50px_rgba(15,23,42,0.18)] flex items-center gap-3 animate-in slide-in-from-top-10 fade-in duration-300">
             {notification.type === 'error' ? <X size={18} className="text-red-500" /> : <CheckCircle size={18} className={notification.type === 'info' ? "text-sky-500" : "text-emerald-500"} />}
-            <span className="text-sm font-bold tracking-wide">{notification.msg}</span>
+            <span className="text-sm font-bold">{notification.msg}</span>
           </div>
         )}
 
-        <div className="w-full max-w-md bg-white min-h-screen relative shadow-[0_30px_100px_-55px_rgba(14,165,233,0.65)] overflow-hidden flex flex-col">
+        <div className="w-full sm:max-w-[430px] bg-white min-h-screen sm:min-h-[calc(100vh-2rem)] sm:my-4 relative app-frame overflow-hidden flex flex-col">
            {view === 'login' && <LoginView onLogin={handleLogin} showToast={showToast} />}
            {view === 'admin' && <AdminDashboard logout={handleLogout} doctors={doctors} />}
            {view === 'doctor_dashboard' && <DoctorDashboard user={user} logout={handleLogout} showToast={showToast} />}
@@ -1573,20 +1848,21 @@ export default function App() {
                     {view === 'dashboard' && <DashboardView appointments={appointments} onPayNow={handlePayNow} onPayCash={handlePayCash} />}
                     {view === 'profile' && <ProfileView user={user} logout={handleLogout} />}
                     {view === 'success' && (
-                       <div className="flex flex-col items-center justify-center text-center p-8 h-full">
-                          <div className="w-24 h-24 bg-green-50 rounded-full flex items-center justify-center mb-6 animate-bounce"><CheckCircle size={48} className="text-green-500" /></div>
-                          <h1 className="text-3xl font-black mb-3 text-slate-800">Confirmed!</h1>
-                          <p className="text-slate-500 font-medium mb-10">Your booking request has been sent to the doctor.</p>
-                          <Button onClick={() => setView('dashboard')} className="w-full mb-4 shadow-none">View Appointments</Button>
-                          <Button onClick={() => setView('home')} variant="secondary" className="w-full border-2">Back to Home</Button>
+                       <div className="flex flex-col items-center justify-center text-center p-6 h-full app-screen">
+                          <div className="pro-card p-8 w-full">
+                            <div className="w-24 h-24 bg-gradient-to-br from-emerald-500 to-cyan-500 rounded-lg flex items-center justify-center mb-6 mx-auto shadow-xl shadow-emerald-500/20 animate-in zoom-in-75 duration-300"><CheckCircle size={48} className="text-white" /></div>
+                            <h1 className="text-3xl font-black mb-3 text-slate-950">Request sent</h1>
+                            <p className="text-slate-500 font-semibold mb-8">Your booking request is waiting for the doctor to approve it.</p>
+                            <Button onClick={() => setView('dashboard')} variant="accent" className="w-full mb-3 shadow-none">View Appointments</Button>
+                            <Button onClick={() => setView('home')} variant="secondary" className="w-full">Back to Home</Button>
+                          </div>
                        </div>
                     )}
                  </div>
 
-                 {/* Premium Floating iOS-style Bottom Nav */}
                  {!['detail', 'success', 'login'].includes(view) && (
-                    <div className="absolute bottom-0 w-full px-6 pb-6 pt-2 z-40 pointer-events-none">
-                       <div className="bg-white/95 backdrop-blur-2xl border border-cyan-100 p-2 rounded-3xl flex justify-around items-center shadow-[0_20px_50px_rgba(14,165,233,0.18)] pointer-events-auto">
+                    <div className="absolute bottom-0 w-full px-5 pb-5 pt-2 z-40 pointer-events-none">
+                       <div className="bg-white/95 backdrop-blur-2xl border border-slate-200 p-2 rounded-xl flex justify-around items-center shadow-[0_20px_50px_rgba(15,23,42,0.14)] pointer-events-auto">
                          {[
                            { id: 'home', icon: Zap, label: 'Home' },
                            { id: 'search', icon: Search, label: 'Search' },
@@ -1596,11 +1872,10 @@ export default function App() {
                            <button 
                              key={item.id} 
                              onClick={() => setView(item.id)} 
-                             className={`relative flex flex-col items-center gap-1 w-16 py-2 rounded-2xl transition-all duration-300 ${view === item.id ? 'text-cyan-600 bg-cyan-50' : 'text-slate-500 hover:text-cyan-700'}`}
+                             className={`relative flex flex-col items-center gap-1 w-16 py-2 rounded-lg transition-all duration-300 ${view === item.id ? 'text-white bg-slate-950 shadow-md shadow-slate-900/15' : 'text-slate-500 hover:text-cyan-700 hover:bg-cyan-50'}`}
                            >
                              <item.icon size={22} strokeWidth={view === item.id ? 2.5 : 2} className={view === item.id ? 'animate-in zoom-in-75 duration-200' : ''} />
-                             <span className="text-[9px] font-extrabold uppercase tracking-wider">{item.label}</span>
-                             {view === item.id && <div className="absolute -top-1 w-8 h-1 bg-cyan-400 rounded-full"></div>}
+                             <span className="text-[9px] font-extrabold uppercase">{item.label}</span>
                            </button>
                          ))}
                        </div>
