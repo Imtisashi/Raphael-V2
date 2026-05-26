@@ -13,6 +13,8 @@ import appIcon from '../icons/icon-128.webp';
 const APP_ICON = appIcon;
 const AI_ASSISTANT_ENDPOINT = import.meta.env.VITE_AI_ASSISTANT_ENDPOINT || (import.meta.env.PROD ? '/api/ai-assistant' : '');
 const REALTIME_SESSION_ENDPOINT = import.meta.env.VITE_REALTIME_SESSION_ENDPOINT || import.meta.env.VITE_REALTIME_TOKEN_ENDPOINT || (import.meta.env.PROD ? '/api/realtime-session' : '');
+const GEMINI_VOICE_ENDPOINT = import.meta.env.VITE_GEMINI_VOICE_ENDPOINT || (import.meta.env.PROD ? '/api/gemini-voice' : '');
+const VOICE_PROVIDER = import.meta.env.VITE_VOICE_PROVIDER || 'gemini';
 
 const SYMPTOM_MAP = {
   head: 'Neurologist', migraine: 'Neurologist', brain: 'Neurologist',
@@ -231,6 +233,15 @@ const askCareAssistant = async (input, doctors = []) => {
     window.clearTimeout(timeoutId);
   }
 };
+
+const blobToBase64 = (blob) => (
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(String(reader.result || '').split(',')[1] || '');
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  })
+);
 
 const numericAmount = (value) => {
   const match = String(value || '').replace(/,/g, '').match(/\d+(?:\.\d+)?/);
@@ -1200,6 +1211,10 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
   const realtimeStreamRef = useRef(null);
   const realtimeAudioRef = useRef(null);
   const realtimeChannelRef = useRef(null);
+  const geminiRecorderRef = useRef(null);
+  const geminiChunksRef = useRef([]);
+  const geminiStreamRef = useRef(null);
+  const geminiStopTimerRef = useRef(null);
   const lastVoiceReplyRef = useRef('');
 
   useEffect(() => {
@@ -1210,8 +1225,14 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
     if (!('speechSynthesis' in window)) return;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'en-IN';
-    utterance.rate = 0.95;
+    const voices = window.speechSynthesis.getVoices?.() || [];
+    const naturalVoice = voices.find(voice => /en-IN|India/i.test(`${voice.lang} ${voice.name}`))
+      || voices.find(voice => /Google|Microsoft|Natural|Neural/i.test(voice.name) && /^en/i.test(voice.lang))
+      || voices.find(voice => /^en/i.test(voice.lang));
+    if (naturalVoice) utterance.voice = naturalVoice;
+    utterance.lang = naturalVoice?.lang || 'en-IN';
+    utterance.rate = 0.98;
+    utterance.pitch = 1;
     window.speechSynthesis.speak(utterance);
   }, []);
 
@@ -1322,7 +1343,32 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
     }
   }, []);
 
-  useEffect(() => () => stopRealtimeVoice(false), [stopRealtimeVoice]);
+  const stopGeminiVoice = useCallback((cancelOnly = false) => {
+    if (geminiStopTimerRef.current) {
+      window.clearTimeout(geminiStopTimerRef.current);
+      geminiStopTimerRef.current = null;
+    }
+
+    const recorder = geminiRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') {
+      if (cancelOnly) recorder.onstop = null;
+      recorder.stop();
+    }
+
+    if (cancelOnly) {
+      geminiStreamRef.current?.getTracks().forEach(track => track.stop());
+      geminiRecorderRef.current = null;
+      geminiStreamRef.current = null;
+      geminiChunksRef.current = [];
+      setVoiceSessionState('idle');
+      setVoiceStatus('');
+    }
+  }, []);
+
+  useEffect(() => () => {
+    stopGeminiVoice(true);
+    stopRealtimeVoice(false);
+  }, [stopGeminiVoice, stopRealtimeVoice]);
 
   const routeFromVoiceTranscript = useCallback((transcript) => {
     const guidance = generateCareGuidance(transcript, doctors);
@@ -1338,6 +1384,148 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
     lastVoiceReplyRef.current = cleaned;
     setChatMessages(prev => [...prev, { sender: 'ai', text: cleaned }]);
   }, []);
+
+  const startGeminiVoice = useCallback(async () => {
+    if (voiceSessionState === 'recording') {
+      setVoiceStatus('Sending your voice to Gemini');
+      stopGeminiVoice(false);
+      return;
+    }
+
+    if (voiceSessionState === 'connecting') return;
+
+    if (voiceSessionState === 'live') {
+      stopRealtimeVoice(false);
+    }
+
+    setShowChat(true);
+    if (isListening && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    }
+
+    if (!GEMINI_VOICE_ENDPOINT) {
+      setChatMessages(prev => [...prev, { sender: 'ai', text: 'Gemini voice works when the app is running on Vercel or `vercel dev`. I will use browser dictation here so you can still speak.' }]);
+      if (voiceSupported) toggleVoice();
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setChatMessages(prev => [...prev, { sender: 'ai', text: 'This browser needs microphone recording support for Gemini voice. Try Chrome or Edge on HTTPS, or type your symptom.' }]);
+      return;
+    }
+
+    try {
+      setAssistantProvider('Gemini');
+      setVoiceSessionState('recording');
+      setVoiceStatus('Listening with Gemini. Tap the mic again to send.');
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      geminiStreamRef.current = stream;
+      geminiChunksRef.current = [];
+
+      const preferredMimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']
+        .find(type => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, preferredMimeType ? { mimeType: preferredMimeType } : undefined);
+      geminiRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data?.size) geminiChunksRef.current.push(event.data);
+      };
+
+      recorder.onerror = () => {
+        setVoiceSessionState('idle');
+        setVoiceStatus('');
+        setChatMessages(prev => [...prev, { sender: 'ai', text: 'The microphone recorder stopped unexpectedly. Please try again.' }]);
+      };
+
+      recorder.onstop = async () => {
+        if (geminiStopTimerRef.current) {
+          window.clearTimeout(geminiStopTimerRef.current);
+          geminiStopTimerRef.current = null;
+        }
+        stream.getTracks().forEach(track => track.stop());
+        geminiStreamRef.current = null;
+        geminiRecorderRef.current = null;
+
+        const blob = new Blob(geminiChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+        geminiChunksRef.current = [];
+        if (blob.size < 800) {
+          setVoiceSessionState('idle');
+          setVoiceStatus('');
+          setChatMessages(prev => [...prev, { sender: 'ai', text: 'I did not receive enough audio. Tap the mic, speak for a moment, then tap it again to send.' }]);
+          return;
+        }
+
+        setVoiceSessionState('connecting');
+        setVoiceStatus('Gemini is thinking');
+
+        try {
+          const audioBase64 = await blobToBase64(blob);
+          const response = await fetch(GEMINI_VOICE_ENDPOINT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              audioBase64,
+              mimeType: blob.type || 'audio/webm',
+              doctors: doctors.slice(0, 20).map(doctor => ({
+                id: doctor.id,
+                name: doctor.name,
+                specialty: doctor.specialty,
+                district: doctor.district || doctor.location,
+                nextSlot: nextSlotFor(doctor),
+              })),
+            }),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data.error || 'Gemini voice is unavailable.');
+
+          const transcript = String(data.transcript || '').trim();
+          const reply = String(data.response || '').trim();
+          if (transcript) {
+            setChatMessages(prev => [...prev, { sender: 'user', text: transcript }]);
+            routeFromVoiceTranscript(transcript);
+          }
+          if (reply) {
+            setChatMessages(prev => [...prev, { sender: 'ai', text: reply }]);
+            speak(reply);
+          }
+          if (data.specialty && data.specialty !== 'Emergency Care') {
+            setSearchQuery(data.searchQuery || data.specialty);
+          } else if (data.shouldSearch && (data.searchQuery || transcript)) {
+            setSearchQuery(data.searchQuery || transcript);
+          }
+          if (data.shouldSearch) {
+            window.setTimeout(() => setView('search'), 700);
+          }
+        } catch (err) {
+          setChatMessages(prev => [...prev, { sender: 'ai', text: err?.message || 'Gemini voice could not answer yet. Check GEMINI_API_KEY in Vercel and try again.' }]);
+        } finally {
+          setVoiceSessionState('idle');
+          setVoiceStatus('');
+        }
+      };
+
+      recorder.start();
+      geminiStopTimerRef.current = window.setTimeout(() => {
+        if (geminiRecorderRef.current?.state === 'recording') {
+          setVoiceStatus('Sending your voice to Gemini');
+          geminiRecorderRef.current.stop();
+        }
+      }, 10000);
+    } catch (err) {
+      stopGeminiVoice(true);
+      const message = err?.name === 'NotAllowedError'
+        ? 'Microphone permission is blocked. Enable microphone access for this site and try again.'
+        : err?.message || 'Unable to start Gemini voice.';
+      setChatMessages(prev => [...prev, { sender: 'ai', text: message }]);
+    }
+  }, [doctors, isListening, routeFromVoiceTranscript, setSearchQuery, setView, speak, stopGeminiVoice, stopRealtimeVoice, toggleVoice, voiceSessionState, voiceSupported]);
 
   const handleRealtimeEvent = useCallback((event) => {
     if (!event?.type) return;
@@ -1473,8 +1661,17 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
     }
   }, [doctors, handleRealtimeEvent, isListening, liveVoiceSupported, stopRealtimeVoice, toggleVoice, voiceSessionState, voiceSupported]);
 
+  const startVoiceAssistant = useCallback(() => {
+    if (VOICE_PROVIDER === 'openai') {
+      startRealtimeVoice();
+      return;
+    }
+    startGeminiVoice();
+  }, [startGeminiVoice, startRealtimeVoice]);
+
   const featuredDoctors = doctors.slice(0, 3);
   const specialties = uniqueSpecialties();
+  const voiceActive = voiceSessionState === 'live' || voiceSessionState === 'recording';
 
   return (
     <div className="relative space-y-6 pb-28 flex-1 app-screen min-h-full">
@@ -1499,8 +1696,8 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
             className="w-full h-14 pl-12 pr-14 rounded-lg bg-white text-slate-900 placeholder-slate-400 outline-none font-semibold"
             onChange={(e) => { setSearchQuery(e.target.value); if (e.target.value.length > 2) setView('search'); }}
           />
-          <button type="button" onClick={startRealtimeVoice} className={`absolute right-2 top-2 p-2.5 rounded-lg transition-colors ${voiceSessionState === 'live' ? 'bg-emerald-50 text-emerald-600' : voiceSessionState === 'connecting' ? 'bg-cyan-50 text-cyan-700' : 'bg-slate-950 text-white hover:bg-slate-800'}`}>
-            {voiceSessionState === 'connecting' ? <Loader2 size={16} className="animate-spin" /> : voiceSessionState === 'live' ? <MicOff size={16}/> : <Mic size={16}/>}
+          <button type="button" onClick={startVoiceAssistant} className={`absolute right-2 top-2 p-2.5 rounded-lg transition-colors ${voiceActive ? 'bg-emerald-50 text-emerald-600' : voiceSessionState === 'connecting' ? 'bg-cyan-50 text-cyan-700' : 'bg-slate-950 text-white hover:bg-slate-800'}`}>
+            {voiceSessionState === 'connecting' ? <Loader2 size={16} className="animate-spin" /> : voiceActive ? <MicOff size={16}/> : <Mic size={16}/>}
           </button>
         </div>
 
@@ -1585,12 +1782,12 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
                 <div className="bg-white/15 p-1.5 rounded-lg"><Sparkles size={16} /></div>
                 <div>
                   <span className="font-bold text-sm block">Rapha'l Assist</span>
-                  <span className="text-[10px] font-bold text-cyan-100">{voiceSessionState === 'live' ? 'Live voice' : voiceSessionState === 'connecting' ? 'Connecting voice' : `${assistantProvider} triage`}</span>
+                  <span className="text-[10px] font-bold text-cyan-100">{voiceSessionState === 'recording' ? 'Gemini listening' : voiceSessionState === 'live' ? 'Live voice' : voiceSessionState === 'connecting' ? 'Thinking voice' : `${assistantProvider} triage`}</span>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button onClick={startRealtimeVoice} className={`p-1.5 rounded-md transition-colors ${voiceSessionState === 'live' ? 'bg-emerald-400 text-slate-950' : 'bg-white/10 hover:bg-white/20'}`}>
-                  {voiceSessionState === 'connecting' ? <Loader2 size={16} className="animate-spin" /> : voiceSessionState === 'live' ? <MicOff size={16} /> : <Mic size={16} />}
+                <button onClick={startVoiceAssistant} className={`p-1.5 rounded-md transition-colors ${voiceActive ? 'bg-emerald-400 text-slate-950' : 'bg-white/10 hover:bg-white/20'}`}>
+                  {voiceSessionState === 'connecting' ? <Loader2 size={16} className="animate-spin" /> : voiceActive ? <MicOff size={16} /> : <Mic size={16} />}
                 </button>
                 <button onClick={() => speak(chatMessages[chatMessages.length - 1]?.text || '')} className="bg-white/10 hover:bg-white/20 p-1.5 rounded-md transition-colors"><Volume2 size={16} /></button>
                 <button onClick={() => setShowChat(false)} className="bg-white/10 hover:bg-white/20 p-1.5 rounded-md transition-colors"><X size={16} /></button>
@@ -1598,7 +1795,7 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
             </div>
             {voiceStatus && (
               <div className="bg-cyan-50 border-b border-cyan-100 px-4 py-2 text-[11px] font-black text-cyan-800 flex items-center gap-2">
-                <span className={`h-2 w-2 rounded-full ${voiceSessionState === 'live' ? 'bg-emerald-500' : 'bg-cyan-500 animate-pulse'}`} />
+                <span className={`h-2 w-2 rounded-full ${voiceActive ? 'bg-emerald-500' : 'bg-cyan-500 animate-pulse'}`} />
                 {voiceStatus}
               </div>
             )}
@@ -1620,8 +1817,8 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
               <div ref={chatEndRef} />
             </div>
             <div className="p-3 bg-white border-t border-slate-100 flex gap-2">
-              <button type="button" onClick={startRealtimeVoice} className={`p-2.5 rounded-lg transition-colors ${voiceSessionState === 'live' ? 'bg-emerald-50 text-emerald-600' : voiceSessionState === 'connecting' ? 'bg-cyan-50 text-cyan-700' : isListening ? 'bg-red-50 text-red-500' : 'bg-cyan-50 text-cyan-700 hover:bg-cyan-100'}`}>
-                {voiceSessionState === 'connecting' ? <Loader2 size={16} className="animate-spin" /> : voiceSessionState === 'live' || isListening ? <MicOff size={16}/> : <Mic size={16}/>}
+              <button type="button" onClick={startVoiceAssistant} className={`p-2.5 rounded-lg transition-colors ${voiceActive ? 'bg-emerald-50 text-emerald-600' : voiceSessionState === 'connecting' ? 'bg-cyan-50 text-cyan-700' : isListening ? 'bg-red-50 text-red-500' : 'bg-cyan-50 text-cyan-700 hover:bg-cyan-100'}`}>
+                {voiceSessionState === 'connecting' ? <Loader2 size={16} className="animate-spin" /> : voiceActive || isListening ? <MicOff size={16}/> : <Mic size={16}/>}
               </button>
               <input type="text" placeholder="Type a symptom..." value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendChat()} className="flex-1 bg-slate-100 rounded-lg px-4 py-2 outline-none text-sm focus:ring-2 focus:ring-cyan-500/20 focus:bg-white border border-transparent focus:border-cyan-200 transition-all" />
               <button onClick={() => handleSendChat()} disabled={isAssistantThinking} className="p-2.5 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white rounded-lg transition-colors shadow-md shadow-cyan-500/20"><Send size={16} /></button>

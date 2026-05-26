@@ -35,6 +35,8 @@ VITE_SUPABASE_URL=your-project-url
 VITE_SUPABASE_ANON_KEY=your-publishable-key
 VITE_AI_ASSISTANT_ENDPOINT=/api/ai-assistant
 VITE_REALTIME_SESSION_ENDPOINT=/api/realtime-session
+VITE_GEMINI_VOICE_ENDPOINT=/api/gemini-voice
+VITE_VOICE_PROVIDER=gemini
 VITE_ADMIN_UPI_HANDLE=optional-upi-handle
 VITE_ADMIN_NAME=optional-admin-name
 ```
@@ -49,10 +51,11 @@ OPENAI_REALTIME_VOICE=marin
 OPENAI_TRANSCRIBE_MODEL=gpt-4o-mini-transcribe
 GEMINI_API_KEY=your-gemini-key
 GEMINI_MODEL=gemini-2.0-flash
+GEMINI_VOICE_MODEL=gemini-2.5-flash
 AI_PROVIDER=gemini
 ```
 
-Live voice requires HTTPS or localhost, browser microphone permission, and `OPENAI_API_KEY` set on Vercel. The key stays server-side in `api/realtime-session.js`.
+Gemini voice requires HTTPS or localhost, browser microphone permission, and `GEMINI_API_KEY` set on Vercel. OpenAI Realtime voice is still available by setting `VITE_VOICE_PROVIDER=openai` and `OPENAI_API_KEY`.
 Do not prefix AI secrets with `VITE_`; `VITE_` variables are exposed to the browser. For local testing of `/api/*` routes, use `vercel dev` or deploy to Vercel because plain `npm run dev` only serves the Vite frontend.
 
 Install and run:
