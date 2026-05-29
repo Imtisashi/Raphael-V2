@@ -1,0 +1,9 @@
+project_id = "dtddjgmmhrbjbmuuxcmf"
+
+[functions.dispatch-push-queue]
+verify_jwt = true
+entrypoint = "./functions/dispatch-push-queue/index.ts"
+
+[functions.dispatch-push-notifications]
+verify_jwt = true
+entrypoint = "./functions/dispatch-push-notifications/index.ts"

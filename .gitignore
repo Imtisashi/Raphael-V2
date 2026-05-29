@@ -94,6 +94,8 @@ dotenv environment variables file
 .env.test
 .env.production
 .env.local
+.env.functions
+android/app/google-services.json
 
 Vercel
 

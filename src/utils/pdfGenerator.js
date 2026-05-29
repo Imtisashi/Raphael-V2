@@ -1,8 +1,27 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+const DEFAULT_PLATFORM_FEE_PERCENT = Number(import.meta.env.VITE_PLATFORM_FEE_PERCENT || 10);
+
+const moneyValue = (value) => {
+  const match = String(value || '').replace(/,/g, '').match(/\d+(?:\.\d+)?/);
+  const amount = Number(match?.[0]);
+  return Number.isFinite(amount) && amount > 0 ? amount : 0;
+};
+
+const formatMoney = (value) => `Rs. ${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+
+const settlementForAppointment = (appointment, feePercent = DEFAULT_PLATFORM_FEE_PERCENT) => {
+  const gross = moneyValue(appointment?.amount);
+  const safeFeePercent = Number.isFinite(Number(feePercent)) ? Math.max(0, Number(feePercent)) : DEFAULT_PLATFORM_FEE_PERCENT;
+  const fallbackPlatformFee = Math.round(gross * safeFeePercent * 100) / 10000;
+  const platformFee = Number(appointment?.platform_fee_amount) || fallbackPlatformFee;
+  const doctorShare = Number(appointment?.doctor_payout_amount) || Math.max(0, Math.round((gross - platformFee) * 100) / 100);
+  return { gross, platformFee, doctorShare };
+};
+
 // --- PATIENT RECEIPT / TAX INVOICE ---
-export const generateReceipt = (appointment) => {
+export const generateReceipt = (appointment, feePercent = DEFAULT_PLATFORM_FEE_PERCENT) => {
   try {
     if (!appointment) {
       alert("Error: No appointment data to print.");
@@ -11,6 +30,9 @@ export const generateReceipt = (appointment) => {
 
     const doc = new jsPDF();
     const primaryColor = [13, 148, 136]; // Teal-600
+    const settlement = settlementForAppointment(appointment, feePercent);
+    const reference = appointment.transaction_id || (appointment.payment_mode === 'Cash' ? 'Cash' : '-');
+    const paymentStatus = appointment.payment_status?.toUpperCase() || 'PAID';
 
     // Header Banner
     doc.setFillColor(...primaryColor);
@@ -29,7 +51,7 @@ export const generateReceipt = (appointment) => {
     doc.setFontSize(16);
     doc.text("TAX INVOICE", 190, 20, null, null, 'right');
     doc.setFontSize(10);
-    doc.text(`REF: #${appointment.transaction_id || 'PENDING'}`, 190, 28, null, null, 'right');
+    doc.text(`REF: #${reference}`, 190, 28, null, null, 'right');
 
     // Bill To / Bill From
     doc.setTextColor(0, 0, 0);
@@ -63,17 +85,18 @@ export const generateReceipt = (appointment) => {
       head: [['Description', 'Reference (UTR)', 'Status', 'Amount']],
       body: [
         [
-          'Medical Consultation Fee', 
-          appointment.transaction_id || '-', 
-          appointment.payment_status?.toUpperCase() || 'PAID', 
-          appointment.amount || '0'
+          'Consultation collected',
+          reference,
+          paymentStatus,
+          formatMoney(settlement.gross)
         ],
-        ['Platform Service Charge', '-', 'INCLUDED', '₹10.00']
+        ['Platform fee retained', '-', 'INCLUDED', formatMoney(settlement.platformFee)],
+        ['Doctor payout due', '-', appointment.payout_status || 'Due', formatMoney(settlement.doctorShare)]
       ],
       theme: 'grid',
       headStyles: { fillColor: primaryColor, textColor: 255, fontStyle: 'bold' },
       columnStyles: { 3: { halign: 'right', fontStyle: 'bold' } },
-      foot: [['', '', 'TOTAL', appointment.amount || '0']]
+      foot: [['', '', 'TOTAL COLLECTED', formatMoney(settlement.gross)]]
     });
 
     // Footer
@@ -103,8 +126,27 @@ export const generateReceipt = (appointment) => {
 // --- ADMIN PAYOUT REPORT ---
 export const generateAdminReport = (payouts) => {
   try {
-    const doc = new jsPDF();
+    const doc = new jsPDF({ orientation: 'landscape' });
     const date = new Date().toLocaleDateString();
+    const totals = payouts.reduce((summary, payout) => ({
+      totalAppointments: summary.totalAppointments + Number(payout.totalAppointments || 0),
+      dueAppointments: summary.dueAppointments + Number(payout.dueAppointments || 0),
+      paidAppointments: summary.paidAppointments + Number(payout.paidAppointments || 0),
+      totalCollected: summary.totalCollected + Number(payout.totalCollected || 0),
+      platformShare: summary.platformShare + Number(payout.platformShare || 0),
+      doctorShare: summary.doctorShare + Number(payout.doctorShare || 0),
+      dueShare: summary.dueShare + Number(payout.dueShare || 0),
+      paidShare: summary.paidShare + Number(payout.paidShare || 0),
+    }), {
+      totalAppointments: 0,
+      dueAppointments: 0,
+      paidAppointments: 0,
+      totalCollected: 0,
+      platformShare: 0,
+      doctorShare: 0,
+      dueShare: 0,
+      paidShare: 0,
+    });
 
     doc.setFontSize(18);
     doc.setTextColor(33, 33, 33);
@@ -116,22 +158,40 @@ export const generateAdminReport = (payouts) => {
 
     const rows = payouts.map(p => [
       p.doctorName,
+      p.doctorUpi || '-',
       p.totalAppointments,
-      `Rs. ${p.totalCollected}`,
-      `Rs. ${p.platformShare}`,
-      `Rs. ${p.doctorShare}` // Net Payable
+      p.dueAppointments || 0,
+      p.paidAppointments || 0,
+      formatMoney(p.totalCollected),
+      formatMoney(p.platformShare),
+      formatMoney(p.doctorShare),
+      formatMoney(p.dueShare),
+      formatMoney(p.paidShare)
     ]);
 
     autoTable(doc, {
       startY: 35,
-      head: [['Doctor Name', 'Appts', 'Total Collection', 'Platform Fee', 'Net Payable to Dr.']],
+      head: [['Doctor', 'UPI', 'Verified', 'Due', 'Paid', 'Collected', 'Platform', 'Doctor Share', 'Due Amount', 'Paid Amount']],
       body: rows,
       theme: 'striped',
+      styles: { fontSize: 8 },
       headStyles: { fillColor: [55, 65, 81] },
-      columnStyles: { 4: { fontStyle: 'bold', textColor: [220, 38, 38] } }
+      columnStyles: { 8: { fontStyle: 'bold', textColor: [22, 101, 52] } },
+      foot: [[
+        'TOTAL',
+        '-',
+        totals.totalAppointments,
+        totals.dueAppointments,
+        totals.paidAppointments,
+        formatMoney(totals.totalCollected),
+        formatMoney(totals.platformShare),
+        formatMoney(totals.doctorShare),
+        formatMoney(totals.dueShare),
+        formatMoney(totals.paidShare),
+      ]]
     });
 
-    doc.save(`Payout_Report_${date}.pdf`);
+    doc.save(`Payout_Report_${date.replace(/[^\dA-Za-z]+/g, '-')}.pdf`);
   } catch (error) {
     console.error("Report Generation Error:", error);
     alert("Failed to generate report.");

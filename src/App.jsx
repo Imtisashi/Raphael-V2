@@ -1,20 +1,25 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
+import { PushNotifications } from '@capacitor/push-notifications';
 import {
   Search, Calendar, Clock, MapPin, Star, Shield, Activity, User, CheckCircle, X,
-  ArrowRight, Loader2, EyeOff, Check, LogOut, MessageSquare, Send, 
-  ChevronLeft, IndianRupee, Zap, Mail, Lock, Sparkles, ChevronRight, Mic, MicOff, Volume2,
-  HeartPulse, Stethoscope, Video, Wallet, TrendingUp, Users, ClipboardCheck, Bell,
+  ArrowRight, Loader2, EyeOff, Check, LogOut,
+  ChevronLeft, IndianRupee, Zap, Mail, Lock, Sparkles, ChevronRight,
+  HeartPulse, Stethoscope, Wallet, TrendingUp, Users, ClipboardCheck, Bell,
   PhoneCall, MapPinned, BadgeCheck, Timer, ArrowUpRight, Brain, Bone, Eye,
-  Edit3, Save, Bot, AlertTriangle, FileText
+  Edit3, Save, AlertTriangle, FileText, Copy
 } from 'lucide-react';
 import { hasSupabaseConfig, supabase } from './lib/supabaseClient';
+import { generateAdminReport, generateReceipt } from './utils/pdfGenerator';
 import appIcon from '../icons/icon-128.webp';
 
 const APP_ICON = appIcon;
-const AI_ASSISTANT_ENDPOINT = import.meta.env.VITE_AI_ASSISTANT_ENDPOINT || (import.meta.env.PROD ? '/api/ai-assistant' : '');
-const REALTIME_SESSION_ENDPOINT = import.meta.env.VITE_REALTIME_SESSION_ENDPOINT || import.meta.env.VITE_REALTIME_TOKEN_ENDPOINT || (import.meta.env.PROD ? '/api/realtime-session' : '');
-const GEMINI_VOICE_ENDPOINT = import.meta.env.VITE_GEMINI_VOICE_ENDPOINT || (import.meta.env.PROD ? '/api/gemini-voice' : '');
-const VOICE_PROVIDER = import.meta.env.VITE_VOICE_PROVIDER || 'gemini';
+const ADMIN_UPI_HANDLE = import.meta.env.VITE_ADMIN_UPI_HANDLE || '';
+const ADMIN_NAME = import.meta.env.VITE_ADMIN_NAME || "Rapha'l Health";
+const DEFAULT_PLATFORM_FEE_PERCENT = Number(import.meta.env.VITE_PLATFORM_FEE_PERCENT || 10);
+const PUSH_CHANNEL_ID = 'booking-updates';
+const PUSH_DEVICE_KEY = 'raphal_device_id';
 
 const SYMPTOM_MAP = {
   head: 'Neurologist', migraine: 'Neurologist', brain: 'Neurologist',
@@ -78,181 +83,25 @@ const FALLBACK_SPECIALTY_META = {
   ring: 'ring-slate-100',
 };
 
-const EMERGENCY_TERMS = [
-  'severe chest pain',
-  'trouble breathing',
-  'cannot breathe',
-  'fainting',
-  'stroke',
-  'seizure',
-  'heavy bleeding',
-  'unconscious',
-  'suicidal',
-];
-
-const SYMPTOM_RULES = [
-  {
-    specialty: 'Cardiologist',
-    urgency: 'urgent',
-    terms: ['chest pain', 'pressure in chest', 'heart pain', 'palpitation', 'shortness of breath', 'breathless', 'high bp', 'blood pressure'],
-    advice: 'Chest discomfort or breathing trouble can become urgent. If it is severe, sudden, spreading to the arm/jaw, or with sweating/fainting, seek emergency care now.',
-  },
-  {
-    specialty: 'Neurologist',
-    urgency: 'soon',
-    terms: ['migraine', 'severe headache', 'headache', 'dizzy', 'dizziness', 'numbness', 'weakness', 'memory', 'seizure'],
-    advice: 'A neurologist is a good match for recurring headaches, migraine, dizziness, numbness, seizure-like episodes, or nerve symptoms.',
-  },
-  {
-    specialty: 'Dermatologist',
-    urgency: 'routine',
-    terms: ['rash', 'itching', 'skin', 'acne', 'allergy on skin', 'spots', 'eczema', 'hair fall'],
-    advice: 'A dermatologist can help with rashes, acne, itching, hair fall, and skin allergy symptoms.',
-  },
-  {
-    specialty: 'Orthopedic',
-    urgency: 'routine',
-    terms: ['joint', 'knee', 'back pain', 'bone', 'fracture', 'sprain', 'shoulder', 'neck pain', 'arthritis'],
-    advice: 'An orthopedic specialist is a strong fit for joint, back, bone, sprain, fracture, or mobility-related pain.',
-  },
-  {
-    specialty: 'Ophthalmologist',
-    urgency: 'soon',
-    terms: ['eye', 'vision', 'blurred vision', 'red eye', 'eye pain', 'watery eyes', 'sight'],
-    advice: 'An ophthalmologist is best for eye pain, blurred vision, redness, watering, or sight changes.',
-  },
-  {
-    specialty: 'General Physician',
-    urgency: 'routine',
-    terms: ['fever', 'flu', 'cough', 'cold', 'pain', 'stomach', 'vomit', 'diarrhea', 'weakness', 'body ache', 'infection'],
-    advice: 'A general physician is a good first step for fever, flu, cough, stomach issues, weakness, body aches, and general illness.',
-  },
-];
-
-const generateCareGuidance = (input, doctors = []) => {
-  const query = input.trim().toLowerCase();
-  if (!query) {
-    return {
-      specialty: null,
-      shouldSearch: false,
-      searchQuery: '',
-      response: "Tell me what you are feeling, for example fever, chest discomfort, rash, headache, or joint pain.",
-    };
-  }
-
-  const urgentTerm = EMERGENCY_TERMS.find(term => query.includes(term));
-  if (urgentTerm) {
-    return {
-      specialty: 'Emergency Care',
-      shouldSearch: false,
-      searchQuery: '',
-      response: "This may need urgent care. Please contact local emergency services or visit the nearest emergency department now.",
-    };
-  }
-
-  const scoredRules = SYMPTOM_RULES
-    .map(rule => ({
-      ...rule,
-      score: rule.terms.reduce((score, term) => score + (query.includes(term) ? term.length : 0), 0),
-    }))
-    .filter(rule => rule.score > 0)
-    .sort((a, b) => b.score - a.score);
-
-  const matchedRule = scoredRules[0];
-  const matchedKeyword = !matchedRule && Object.keys(SYMPTOM_MAP).find(keyword => query.includes(keyword));
-  const specialty = matchedRule?.specialty || (matchedKeyword ? SYMPTOM_MAP[matchedKeyword] : null);
-  const matchingDoctors = specialty ? doctors.filter(doctor => doctor.specialty === specialty) : [];
-
-  if (specialty) {
-    const availability = matchingDoctors.length
-      ? `I found ${matchingDoctors.length} ${specialty.toLowerCase()} option${matchingDoctors.length === 1 ? '' : 's'} for you.`
-      : `I can search for ${specialty.toLowerCase()} options for you.`;
-    const urgencyNote = matchedRule?.urgency === 'urgent'
-      ? 'Please treat this as time-sensitive if symptoms feel intense or sudden.'
-      : 'Book a visit if symptoms persist, worsen, or worry you.';
-
-    return {
-      specialty,
-      shouldSearch: true,
-      searchQuery: specialty,
-      response: `${availability} ${matchedRule?.advice || 'This is guidance, not a diagnosis.'} ${urgencyNote}`,
-    };
-  }
-
-  return {
-    specialty: null,
-    shouldSearch: false,
-    searchQuery: '',
-    response: "I need one or two more details to route you well. What is the main symptom, how long has it been happening, and is it mild, moderate, or severe?",
-  };
-};
-
-const askCareAssistant = async (input, doctors = []) => {
-  const fallbackGuidance = generateCareGuidance(input, doctors);
-  if (!AI_ASSISTANT_ENDPOINT) return { ...fallbackGuidance, provider: 'local' };
-
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), 8000);
-
-  try {
-    const response = await fetch(AI_ASSISTANT_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify({
-        message: input,
-        locale: 'en-IN',
-        safety: 'non_diagnostic_triage',
-        preferredProviders: ['openai', 'gemini'],
-        doctors: doctors.slice(0, 20).map(doctor => ({
-          id: doctor.id,
-          name: doctor.name,
-          specialty: doctor.specialty,
-          district: doctor.district,
-          nextSlot: nextSlotFor(doctor),
-        })),
-      }),
-    });
-
-    if (!response.ok) throw new Error('AI endpoint unavailable');
-    const data = await response.json();
-    return {
-      specialty: data.specialty || fallbackGuidance.specialty,
-      shouldSearch: Boolean(data.shouldSearch ?? fallbackGuidance.shouldSearch),
-      searchQuery: data.searchQuery || data.specialty || fallbackGuidance.searchQuery,
-      response: data.response || fallbackGuidance.response,
-      provider: data.provider || 'ai',
-    };
-  } catch {
-    return {
-      ...fallbackGuidance,
-      provider: 'local',
-      response: `${fallbackGuidance.response} I used the built-in triage logic because the AI service is not reachable right now.`,
-    };
-  } finally {
-    window.clearTimeout(timeoutId);
-  }
-};
-
-const blobToBase64 = (blob) => (
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(String(reader.result || '').split(',')[1] || '');
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  })
-);
-
 const numericAmount = (value) => {
   const match = String(value || '').replace(/,/g, '').match(/\d+(?:\.\d+)?/);
   const amount = Number(match?.[0]);
-  return Number.isFinite(amount) && amount > 0 ? amount : 500;
+  return Number.isFinite(amount) && amount > 0 ? amount : 0;
 };
 
-const displayAmount = (value) => `Rs. ${numericAmount(value)}`;
+const displayAmount = (value) => {
+  const amount = numericAmount(value);
+  return amount > 0 ? `Rs. ${amount}` : 'Not set';
+};
+const formatMoney = (value) => `Rs. ${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const uniqueSpecialties = () => Array.from(new Set(Object.values(SYMPTOM_MAP)));
+const specialtyForInput = (value) => {
+  const query = String(value || '').trim().toLowerCase();
+  const keyword = Object.keys(SYMPTOM_MAP).find(term => query.includes(term));
+  return keyword ? SYMPTOM_MAP[keyword] : null;
+};
 const specialtyMeta = (specialty) => SPECIALTY_META[specialty] || FALLBACK_SPECIALTY_META;
-const nextSlotFor = (doctor) => doctor?.slots?.[0] || 'Today';
+const nextSlotFor = (doctor) => normalizeSlots(doctor?.slots)[0] || 'No slots';
 const ratingLabel = (rating) => Number(rating || 5).toFixed(1).replace('.0', '');
 const shortDate = (value) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 const normalizeSlots = (value) => (
@@ -261,116 +110,194 @@ const normalizeSlots = (value) => (
     : String(value || '').split(',').map(slot => slot.trim()).filter(Boolean)
 );
 const doctorDisplayName = (name) => (String(name || '').startsWith('Dr.') ? name : `Dr. ${name || 'Provider'}`);
-
-const USER_PROFILE_FIELDS = 'id, email, name, role, phone, district, address, blood_group, allergies, doctorId';
-const MOCK_OTP_CODE = '123456';
-const STORAGE_KEYS = {
-  accounts: 'raphael.mock.accounts',
-  session: 'raphael.mock.session',
-  doctors: 'raphael.mock.doctors',
-  appointments: 'raphael.mock.appointments',
+const cleanUtr = (value) => String(value || '').replace(/\s+/g, '').toUpperCase();
+const isPaymentSubmitted = (appointment) => ['Payment Submitted', 'Pending Verification'].includes(appointment?.payment_status);
+const isPaymentVerified = (appointment) => appointment?.payment_status === 'Verified' || appointment?.status === 'Confirmed';
+const settlementForAmount = (amount, feePercent = DEFAULT_PLATFORM_FEE_PERCENT) => {
+  const gross = numericAmount(amount);
+  const safeFeePercent = Number.isFinite(Number(feePercent)) ? Math.max(0, Number(feePercent)) : DEFAULT_PLATFORM_FEE_PERCENT;
+  const platformFee = Math.round(gross * safeFeePercent * 100) / 10000;
+  const doctorShare = Math.max(0, Math.round((gross - platformFee) * 100) / 100);
+  return { gross, platformFee, doctorShare };
+};
+const isCashPayment = (appointment) => String(appointment?.payment_mode || '').toLowerCase() === 'cash';
+const paymentReviewFor = (appointment, allAppointments = [], feePercent = DEFAULT_PLATFORM_FEE_PERCENT) => {
+  const settlement = settlementForAmount(appointment?.amount, feePercent);
+  const utr = cleanUtr(appointment?.transaction_id);
+  const cashPayment = isCashPayment(appointment);
+  const duplicateUtr = utr
+    ? allAppointments.some(item => item.id !== appointment.id && cleanUtr(item.transaction_id) === utr)
+    : false;
+  const checks = [
+    {
+      label: 'Amount',
+      detail: displayAmount(settlement.gross),
+      pass: settlement.gross > 0,
+    },
+    {
+      label: cashPayment ? 'Mode' : 'UTR',
+      detail: cashPayment ? 'Cash at clinic' : (utr || 'Missing'),
+      pass: cashPayment || utr.length >= 6,
+    },
+    {
+      label: 'Unique',
+      detail: cashPayment ? 'Not required' : (duplicateUtr ? 'Already used' : 'Clear'),
+      pass: cashPayment || !duplicateUtr,
+    },
+    {
+      label: 'Receiver',
+      detail: cashPayment ? 'Clinic counter' : (appointment?.payment_receiver_upi || 'Not saved'),
+      pass: cashPayment || Boolean(appointment?.payment_receiver_upi),
+    },
+  ];
+  return {
+    checks,
+    ready: checks.every(check => check.pass),
+    settlement,
+  };
+};
+const paymentReceiverFor = (doctor) => ({
+  upi: ADMIN_UPI_HANDLE || doctor?.upi_id || '',
+  name: ADMIN_UPI_HANDLE ? ADMIN_NAME : doctor?.name || ADMIN_NAME,
+  type: ADMIN_UPI_HANDLE ? 'clinic' : 'doctor',
+});
+const providerStatus = (doctor) => doctor?.verification_status || 'pending';
+const isProviderApproved = (doctor) => providerStatus(doctor) === 'approved';
+const providerStatusTone = (status) => {
+  if (status === 'approved') return 'success';
+  if (status === 'rejected' || status === 'suspended') return 'error';
+  return 'warning';
+};
+const providerStatusText = (status) => {
+  if (status === 'approved') return 'Approved';
+  if (status === 'rejected') return 'Rejected';
+  if (status === 'suspended') return 'Suspended';
+  return 'Pending';
 };
 
-const DEFAULT_DOCTORS = [
-  {
-    id: 91001,
-    name: 'Dr. Asha Jamir',
-    specialty: 'General Physician',
-    rating: 4.9,
-    reviews: 126,
-    image: '',
-    district: 'Dimapur',
-    clinic_name: 'Raphael Demo Clinic',
-    location: 'Dimapur',
-    experience: '8 Years',
-    bio: 'Demo physician for fever, flu, pain, and routine consultations.',
-    price: 'Rs. 500',
-    upi_id: '',
-    slots: ['09:00 AM', '10:30 AM', '02:00 PM'],
-  },
-  {
-    id: 91002,
-    name: 'Dr. Meera Ao',
-    specialty: 'Dermatologist',
-    rating: 4.8,
-    reviews: 88,
-    image: '',
-    district: 'Kohima',
-    clinic_name: 'Skin & Wellness Demo',
-    location: 'Kohima',
-    experience: '6 Years',
-    bio: 'Demo dermatologist for rash, acne, and skin irritation guidance.',
-    price: 'Rs. 650',
-    upi_id: '',
-    slots: ['11:00 AM', '01:00 PM', '04:00 PM'],
-  },
-  {
-    id: 91003,
-    name: 'Dr. Imkong Walling',
-    specialty: 'Cardiologist',
-    rating: 5.0,
-    reviews: 64,
-    image: '',
-    district: 'Dimapur',
-    clinic_name: 'Heart Care Demo',
-    location: 'Dimapur',
-    experience: '12 Years',
-    bio: 'Demo cardiologist for non-emergency heart and blood-pressure concerns.',
-    price: 'Rs. 900',
-    upi_id: '',
-    slots: ['09:30 AM', '12:00 PM', '03:30 PM'],
-  },
-];
-
-const normalizeEmail = (value) => value.trim().toLowerCase();
-
-const readStoredJson = (key, fallback) => {
+const notifyDevice = async (title, body) => {
   try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
+    const permission = await LocalNotifications.requestPermissions();
+    if (permission.display === 'granted') {
+      await LocalNotifications.schedule({
+        notifications: [{
+          id: Math.floor(Date.now() % 2147483647),
+          title,
+          body,
+          schedule: { at: new Date(Date.now() + 100) },
+        }],
+      });
+      return;
+    }
   } catch {
-    return fallback;
+    // Fall through to Web Notification when the native plugin is not available.
+  }
+
+  if ('Notification' in window) {
+    const permission = Notification.permission === 'granted'
+      ? 'granted'
+      : await Notification.requestPermission().catch(() => 'denied');
+    if (permission === 'granted') new Notification(title, { body });
   }
 };
 
-const writeStoredJson = (key, value) => {
-  window.localStorage.setItem(key, JSON.stringify(value));
+const dispatchPushNotifications = async () => {
+  if (!supabase) return;
+  try {
+    await supabase.functions.invoke('dispatch-push-queue', {
+      body: { source: 'booking-workflow' },
+    });
+  } catch {
+    // Push dispatch is best-effort; the durable in-app inbox remains the source of truth.
+  }
 };
 
-const encodeMockPassword = (password) => (
-  Array.from(password)
-    .map((char, index) => (char.charCodeAt(0) + index + 31).toString(36))
-    .join('.')
+const appointmentFromRpc = (data) => (Array.isArray(data) ? data[0] : data);
+const APPOINTMENT_EVENT_META = {
+  booking_requested: { icon: Calendar, tone: 'bg-cyan-50 text-cyan-700 border-cyan-100' },
+  booking_accepted: { icon: CheckCircle, tone: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+  booking_declined: { icon: X, tone: 'bg-red-50 text-red-700 border-red-100' },
+  payment_submitted: { icon: Wallet, tone: 'bg-amber-50 text-amber-700 border-amber-100' },
+  payment_verified: { icon: BadgeCheck, tone: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+  payment_rejected: { icon: AlertTriangle, tone: 'bg-red-50 text-red-700 border-red-100' },
+  payout_paid: { icon: TrendingUp, tone: 'bg-slate-100 text-slate-800 border-slate-200' },
+};
+
+const ADMIN_AUDIT_META = {
+  provider_reviewed: { icon: Shield, tone: 'bg-violet-50 text-violet-700 border-violet-100' },
+  platform_fee_changed: { icon: IndianRupee, tone: 'bg-cyan-50 text-cyan-700 border-cyan-100' },
+  payment_verified: { icon: BadgeCheck, tone: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+  payment_rejected: { icon: AlertTriangle, tone: 'bg-red-50 text-red-700 border-red-100' },
+  payout_paid: { icon: TrendingUp, tone: 'bg-slate-100 text-slate-800 border-slate-200' },
+};
+
+const formatEventTime = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).replace(',', '');
+};
+
+const groupEventsByAppointment = (events = []) => (
+  events.reduce((grouped, event) => {
+    const key = String(event.appointment_id);
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(event);
+    return grouped;
+  }, {})
 );
 
-const createLocalId = (prefix) => {
-  const random = Math.random().toString(36).slice(2, 8);
-  return `${prefix}-${Date.now().toString(36)}-${random}`;
+const fetchAppointmentEventsFor = async (appointmentIds = []) => {
+  const ids = Array.from(new Set(appointmentIds.filter(Boolean).map(String)));
+  if (!supabase || !ids.length) return {};
+
+  const { data, error } = await supabase
+    .from('appointment_events')
+    .select('id, appointment_id, event_type, title, body, created_at, metadata')
+    .in('appointment_id', ids)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return groupEventsByAppointment(data || []);
 };
 
-const createLocalDoctorId = () => 92000 + Math.floor(Math.random() * 7000);
+const createDeviceId = () => (
+  globalThis.crypto?.randomUUID?.() || `device-${Date.now()}-${Math.random().toString(36).slice(2)}`
+);
 
-const withoutPassword = (account) => {
-  const profile = { ...account };
-  delete profile.passwordHash;
-  return profile;
+const getStoredDeviceId = () => {
+  if (typeof window === 'undefined') return createDeviceId();
+  try {
+    const existing = window.localStorage.getItem(PUSH_DEVICE_KEY);
+    if (existing) return existing;
+    const next = createDeviceId();
+    window.localStorage.setItem(PUSH_DEVICE_KEY, next);
+    return next;
+  } catch {
+    return createDeviceId();
+  }
 };
 
-const getMockAccounts = () => readStoredJson(STORAGE_KEYS.accounts, []);
+const disableStoredPushDevice = async (userId) => {
+  if (!supabase || !userId || typeof window === 'undefined') return;
+  try {
+    const deviceId = window.localStorage.getItem(PUSH_DEVICE_KEY);
+    if (!deviceId) return;
+    await supabase
+      .from('device_tokens')
+      .update({ enabled: false, updated_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .eq('device_id', deviceId);
+  } catch {
+    // Logout should still proceed if push-token cleanup is unavailable.
+  }
+};
 
-const saveMockAccounts = (accounts) => writeStoredJson(STORAGE_KEYS.accounts, accounts);
-
-const getMockSession = () => readStoredJson(STORAGE_KEYS.session, null);
-
-const saveMockSession = (profile) => writeStoredJson(STORAGE_KEYS.session, profile);
-
-const clearMockSession = () => window.localStorage.removeItem(STORAGE_KEYS.session);
-
-const isMockUser = (profile) => Boolean(profile?.isMock);
-
-const getLocalDoctors = () => readStoredJson(STORAGE_KEYS.doctors, []);
-
-const saveLocalDoctors = (doctors) => writeStoredJson(STORAGE_KEYS.doctors, doctors);
+const USER_PROFILE_FIELDS = 'id, email, name, role, phone, district, address, blood_group, allergies, doctorId';
+const normalizeEmail = (value) => value.trim().toLowerCase();
 
 const mergeDoctors = (...groups) => {
   const seen = new Set();
@@ -381,146 +308,6 @@ const mergeDoctors = (...groups) => {
   });
 };
 
-const upsertLocalDoctor = (doctor) => {
-  const doctors = getLocalDoctors();
-  const index = doctors.findIndex((item) => String(item.id) === String(doctor.id));
-  const nextDoctors = index >= 0
-    ? doctors.map((item, itemIndex) => (itemIndex === index ? { ...item, ...doctor } : item))
-    : [...doctors, doctor];
-  saveLocalDoctors(nextDoctors);
-  return doctor;
-};
-
-const getLocalAppointments = () => readStoredJson(STORAGE_KEYS.appointments, []);
-
-const saveLocalAppointments = (appointments) => writeStoredJson(STORAGE_KEYS.appointments, appointments);
-
-const saveLocalAppointment = (appointment) => {
-  const nextAppointment = {
-    ...appointment,
-    id: appointment.id || createLocalId('mock-appt'),
-    isMock: true,
-    created_at: appointment.created_at || new Date().toISOString(),
-  };
-  saveLocalAppointments([nextAppointment, ...getLocalAppointments()]);
-  return nextAppointment;
-};
-
-const updateLocalAppointment = (id, patch) => {
-  let updatedAppointment = null;
-  const appointments = getLocalAppointments().map((appointment) => {
-    if (String(appointment.id) !== String(id)) return appointment;
-    updatedAppointment = { ...appointment, ...patch };
-    return updatedAppointment;
-  });
-  saveLocalAppointments(appointments);
-  return updatedAppointment;
-};
-
-const getLocalPatientAppointments = (patientId) => (
-  getLocalAppointments()
-    .filter((appointment) => String(appointment.patient_id) === String(patientId))
-    .sort((a, b) => new Date(b.created_at || b.appointment_date) - new Date(a.created_at || a.appointment_date))
-);
-
-const getLocalDoctorAppointments = (doctorId) => (
-  getLocalAppointments()
-    .filter((appointment) => String(appointment.doctor_id) === String(doctorId))
-    .sort((a, b) => new Date(b.created_at || b.appointment_date) - new Date(a.created_at || a.appointment_date))
-);
-
-const createMockAccount = ({ email, password, name, phone, role, specialty, price, doctorUpi }) => {
-  const normalizedEmail = normalizeEmail(email);
-  const accounts = getMockAccounts();
-
-  if (accounts.some((account) => account.email === normalizedEmail)) {
-    throw new Error('A demo account already exists for this email. Please sign in.');
-  }
-
-  const profile = {
-    id: createLocalId('mock-user'),
-    email: normalizedEmail,
-    name: name.trim(),
-    role,
-    phone: phone.trim(),
-    district: 'Dimapur',
-    address: '',
-    blood_group: '',
-    allergies: '',
-    isMock: true,
-  };
-
-  if (role === 'doctor') {
-    const doctor = upsertLocalDoctor({
-      id: createLocalDoctorId(),
-      name: doctorDisplayName(profile.name),
-      specialty,
-      rating: 5.0,
-      reviews: 0,
-      image: '',
-      district: 'Dimapur',
-      clinic_name: `${profile.name} Clinic`,
-      location: 'Online',
-      experience: '1 Year',
-      bio: 'Demo provider created through OTP signup.',
-      price: displayAmount(price),
-      upi_id: doctorUpi.trim(),
-      slots: ['09:00 AM', '10:00 AM', '02:00 PM'],
-      owner_id: profile.id,
-      isMock: true,
-    });
-    profile.doctorId = doctor.id;
-  }
-
-  const account = {
-    ...profile,
-    passwordHash: encodeMockPassword(password),
-  };
-  saveMockAccounts([...accounts, account]);
-  saveMockSession(profile);
-  return profile;
-};
-
-const loginMockAccount = (email, password) => {
-  const account = getMockAccounts().find((item) => item.email === normalizeEmail(email));
-  if (!account || account.passwordHash !== encodeMockPassword(password)) return null;
-
-  const profile = withoutPassword(account);
-  saveMockSession(profile);
-  return profile;
-};
-
-const updateMockAccount = (userId, patch) => {
-  let updatedProfile = null;
-  const accounts = getMockAccounts().map((account) => {
-    if (String(account.id) !== String(userId)) return account;
-    const updatedAccount = { ...account, ...patch };
-    updatedProfile = withoutPassword(updatedAccount);
-    return updatedAccount;
-  });
-  saveMockAccounts(accounts);
-  if (updatedProfile) saveMockSession(updatedProfile);
-  return updatedProfile;
-};
-
-const updateLocalDoctorProfile = (doctorId, patch) => {
-  let updatedDoctor = null;
-  const doctors = getLocalDoctors().map((doctor) => {
-    if (String(doctor.id) !== String(doctorId)) return doctor;
-    updatedDoctor = { ...doctor, ...patch };
-    return updatedDoctor;
-  });
-  if (!updatedDoctor) {
-    const baseDoctor = DEFAULT_DOCTORS.find((doctor) => String(doctor.id) === String(doctorId));
-    if (baseDoctor) {
-      updatedDoctor = { ...baseDoctor, ...patch };
-      doctors.push(updatedDoctor);
-    }
-  }
-  saveLocalDoctors(doctors);
-  return updatedDoctor;
-};
-
 const friendlyNetworkError = (err, fallback) => {
   const message = err?.message || '';
   if (/failed to fetch|network|fetch/i.test(message)) {
@@ -528,6 +315,13 @@ const friendlyNetworkError = (err, fallback) => {
   }
   return message || fallback;
 };
+
+const withTimeout = (promise, timeoutMs) => (
+  new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error('Request timed out.')), timeoutMs);
+    promise.then(resolve, reject).finally(() => window.clearTimeout(timer));
+  })
+);
 
 const routeForRole = (role) => {
   if (role === 'admin') return 'admin';
@@ -539,13 +333,17 @@ const profileFromAuthUser = (authUser) => ({
   id: authUser.id,
   email: authUser.email,
   name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'Patient',
-  role: authUser.user_metadata?.role || 'patient',
+  role: 'patient',
   phone: authUser.user_metadata?.phone || '',
   district: authUser.user_metadata?.district || 'Dimapur',
   address: authUser.user_metadata?.address || '',
   blood_group: authUser.user_metadata?.blood_group || '',
   allergies: authUser.user_metadata?.allergies || '',
 });
+
+const requestedSignupRole = (authUser, profileInput = {}) => (
+  profileInput.role === 'doctor' || authUser.user_metadata?.role === 'doctor' ? 'doctor' : 'patient'
+);
 
 const attachDoctorProfile = async (profile) => {
   if (profile?.role !== 'doctor') return profile;
@@ -559,7 +357,7 @@ const attachDoctorProfile = async (profile) => {
   if (profile.doctorId) {
     query = query.eq('id', profile.doctorId);
   } else {
-    query = query.or(`owner_id.eq.${profile.id},name.eq.${profile.name}`);
+    query = query.eq('owner_id', profile.id);
   }
 
   const { data: docRows } = await query;
@@ -596,12 +394,12 @@ const ensureDoctorProfile = async (authUser, profile) => {
 
   if (error) throw error;
 
-  await supabase
-    .from('users')
-    .update({ doctorId: doctor.id })
-    .eq('id', authUser.id);
+  const { data: linkedProfile, error: linkError } = await supabase.rpc('link_own_doctor_profile', {
+    p_doctor_id: doctor.id,
+  });
+  if (linkError) throw linkError;
 
-  return { ...profile, doctorId: doctor.id };
+  return linkedProfile ? { ...linkedProfile, doctorId: linkedProfile.doctorId || doctor.id } : { ...profile, role: 'doctor', doctorId: doctor.id };
 };
 
 const loadUserProfile = async (authUser) => {
@@ -636,21 +434,27 @@ const loadUserProfile = async (authUser) => {
 const saveUserProfile = async (authUser, profileInput) => {
   if (!supabase) throw new Error('Live auth is not configured.');
 
+  const requestedRole = requestedSignupRole(authUser, profileInput);
+  const safeProfileInput = { ...(profileInput || {}) };
+  delete safeProfileInput.role;
+  delete safeProfileInput.doctorId;
   const profile = {
     ...profileFromAuthUser(authUser),
-    ...profileInput,
+    ...safeProfileInput,
     id: authUser.id,
     email: authUser.email,
+    role: 'patient',
+    doctorId: null,
   };
 
   const { data, error } = await supabase
     .from('users')
-    .upsert(profile, { onConflict: 'id' })
+    .insert(profile)
     .select(USER_PROFILE_FIELDS)
     .single();
 
   if (error) throw error;
-  return ensureDoctorProfile(authUser, data);
+  return requestedRole === 'doctor' ? ensureDoctorProfile(authUser, { ...data, role: 'doctor' }) : data;
 };
 
 // ==========================================
@@ -678,6 +482,7 @@ const Badge = ({ children, type = 'info' }) => {
     info: "bg-sky-50 text-sky-700 border border-sky-100",
     success: "bg-emerald-50 text-emerald-700 border border-emerald-100",
     warning: "bg-amber-50 text-amber-700 border border-amber-100",
+    error: "bg-red-50 text-red-700 border border-red-100",
     dark: "bg-slate-950 text-white border border-slate-800"
   };
   return (
@@ -783,7 +588,6 @@ const DoctorCard = ({ doctor, onClick, featured = false }) => {
 
 function LoginView({ onLogin, showToast }) {
   const [mode, setMode] = useState('login'); 
-  const [isVisible, setIsVisible] = useState(false); 
   const [email, setEmail] = useState('');
   const [resetEmail, setResetEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -796,47 +600,24 @@ function LoginView({ onLogin, showToast }) {
   const [doctorUpi, setDoctorUpi] = useState(''); 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [pendingRegistration, setPendingRegistration] = useState(null);
-  const [otpInput, setOtpInput] = useState('');
-  const [otpCode, setOtpCode] = useState(MOCK_OTP_CODE);
-  const [authMode, setAuthMode] = useState(hasSupabaseConfig ? 'live' : 'mock');
-
-  useEffect(() => {
-    const timer = setTimeout(() => setIsVisible(true), 100);
-    return () => clearTimeout(timer);
-  }, []);
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     try {
-      let liveError = null;
-      if (supabase) {
-        try {
-          const { data, error: loginError } = await supabase.auth.signInWithPassword({
-            email: email.trim(),
-            password,
-          });
-          if (loginError) throw loginError;
-
-          const profile = await loadUserProfile(data.user);
-          onLogin(profile);
-          return;
-        } catch (err) {
-          liveError = err;
-        }
+      if (!supabase) {
+        throw new Error('Live Supabase auth is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to use the app.');
       }
 
-      const mockProfile = loginMockAccount(email.trim(), password);
-      if (mockProfile) {
-        if (showToast) showToast(supabase ? `Live sign in is unavailable, using ${mockProfile.name}'s device account.` : `Welcome back, ${mockProfile.name}!`);
-        onLogin(mockProfile);
-        return;
-      }
+      const { data, error: loginError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (loginError) throw loginError;
 
-      if (liveError) throw liveError;
-      throw new Error('No account found. Create one with live signup or the demo OTP flow.');
+      const profile = await loadUserProfile(data.user);
+      onLogin(profile);
     } catch (err) {
       setError(friendlyNetworkError(err, 'Unable to sign in. Please check your details.'));
     } finally {
@@ -878,98 +659,52 @@ function LoginView({ onLogin, showToast }) {
       password,
     };
 
-    if (authMode === 'live') {
-      if (!supabase) {
-        setError('Live Supabase auth is not configured in this build. Use demo OTP or add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel.');
-        return;
-      }
-
-      setLoading(true);
-      setError('');
-      try {
-        const { data, error: signUpError } = await supabase.auth.signUp({
-          email: normalizedEmail,
-          password,
-          options: {
-            data: {
-              name: registration.name,
-              phone: registration.phone,
-              role,
-              district: 'Dimapur',
-              specialty: role === 'doctor' ? specialty : undefined,
-              consultationFee: role === 'doctor' ? Number(price) : undefined,
-              doctorUpi: role === 'doctor' ? doctorUpi.trim() : undefined,
-            },
-          },
-        });
-        if (signUpError) throw signUpError;
-        if (!data?.user) throw new Error('Live auth did not return a new user.');
-
-        if (!data.session) {
-          if (showToast) showToast('Live account created. Verify your email, then sign in.', 'success');
-          setMode('login');
-          return;
-        }
-
-        const currentUser = await saveUserProfile(data.user, {
-          name: registration.name,
-          phone: registration.phone,
-          role,
-          district: 'Dimapur',
-        });
-        if (showToast) showToast(`Welcome to Rapha'l, ${currentUser.name}!`, 'success');
-        onLogin(currentUser);
-      } catch (err) {
-        setError(friendlyNetworkError(err, 'Unable to create account on the live server.'));
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
-
-    if (getMockAccounts().some((account) => account.email === normalizedEmail)) {
-      setError('A demo account already exists for this email. Please sign in.');
-      return;
-    }
-
-    const nextOtpCode = MOCK_OTP_CODE;
-    setPendingRegistration(registration);
-    setOtpCode(nextOtpCode);
-    setOtpInput('');
-    setError('');
-    setMode('otp');
-    if (showToast) showToast(`Demo OTP: ${nextOtpCode}`, 'info');
-  };
-
-  const handleVerifyOtp = (e) => {
-    e.preventDefault();
-    if (!pendingRegistration) {
-      setMode('register');
-      return;
-    }
-    if (otpInput.trim() !== otpCode) {
-      setError('Incorrect demo OTP. Use the code shown on this screen.');
+    if (!supabase) {
+      setError('Live Supabase auth is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY before creating accounts.');
       return;
     }
 
     setLoading(true);
     setError('');
     try {
-      const currentUser = createMockAccount(pendingRegistration);
-      if (showToast) showToast(`Demo account verified. Welcome to Rapha'l, ${currentUser.name}!`);
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: normalizedEmail,
+        password,
+        options: {
+          data: {
+            name: registration.name,
+            phone: registration.phone,
+            role,
+            district: 'Dimapur',
+            specialty: role === 'doctor' ? specialty : undefined,
+            consultationFee: role === 'doctor' ? Number(price) : undefined,
+            doctorUpi: role === 'doctor' ? doctorUpi.trim() : undefined,
+          },
+          emailRedirectTo: window.location.origin,
+        },
+      });
+      if (signUpError) throw signUpError;
+      if (!data?.user) throw new Error('Live auth did not return a new user.');
+
+      if (!data.session) {
+        if (showToast) showToast('Account created. Verify your email, then sign in.', 'success');
+        setMode('login');
+        return;
+      }
+
+      const currentUser = await saveUserProfile(data.user, {
+        name: registration.name,
+        phone: registration.phone,
+        role,
+        district: 'Dimapur',
+      });
+      if (showToast) showToast(`Welcome to Rapha'l, ${currentUser.name}!`, 'success');
       onLogin(currentUser);
     } catch (err) {
-      setError(err.message || 'Unable to create demo account right now.');
+      setError(friendlyNetworkError(err, 'Unable to create account on the live server.'));
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleResendOtp = () => {
-    setOtpCode(MOCK_OTP_CODE);
-    setOtpInput('');
-    setError('');
-    if (showToast) showToast(`Demo OTP: ${MOCK_OTP_CODE}`, 'info');
   };
 
   const handlePasswordReset = async (e) => {
@@ -984,9 +719,7 @@ function LoginView({ onLogin, showToast }) {
     setError('');
     try {
       if (!supabase) {
-        if (showToast) showToast('Demo mode: create a new account with OTP 123456.', 'info');
-        setMode('register');
-        return;
+        throw new Error('Live Supabase auth is not configured. Password reset requires the live backend.');
       }
 
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(targetEmail, {
@@ -1003,51 +736,53 @@ function LoginView({ onLogin, showToast }) {
   };
 
   return (
-    <div className="auth-screen min-h-screen flex flex-col items-center justify-center p-5 relative overflow-hidden font-sans">
-      <div className={`w-full max-w-md pro-auth-card p-6 sm:p-8 z-10 transition-all duration-700 ${isVisible ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-8 opacity-0 scale-95'}`}>
+    <div className="auth-screen min-h-screen w-full max-w-full flex flex-col items-center justify-center px-4 py-5 sm:p-5 relative overflow-x-hidden overflow-y-auto font-sans">
+      <div className="w-[calc(100vw-2rem)] max-w-md pro-auth-card p-5 sm:p-8 z-10 view-panel">
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-7">
-            <div className="flex items-center gap-3">
-              <img src={APP_ICON} alt="Rapha'l" className="w-14 h-14 rounded-lg object-cover shadow-lg shadow-cyan-900/10" />
-              <div>
-                <h1 className="text-3xl font-black text-slate-950">Rapha'l</h1>
+          <div className="flex min-w-0 items-center justify-between gap-3 mb-7">
+            <div className="flex min-w-0 items-center gap-3">
+              <img src={APP_ICON} alt="Rapha'l" className="w-14 h-14 shrink-0 rounded-lg object-cover shadow-lg shadow-cyan-900/10" />
+              <div className="min-w-0">
+                <h1 className="truncate text-2xl font-black text-slate-950 sm:text-3xl">Rapha'l</h1>
                 <p className="text-xs font-black text-cyan-700 uppercase">Care OS</p>
               </div>
             </div>
-            <Badge type="dark"><Shield size={12} /> Pro</Badge>
+            <div className="shrink-0">
+              <Badge type="dark"><Shield size={12} /> Pro</Badge>
+            </div>
           </div>
           <div className="pro-hero-strip p-4 text-white">
             <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs font-bold text-cyan-100">Pro care workspace</p>
-                <h2 className="text-3xl font-black mt-1 leading-tight">Sign in to a smarter clinic flow.</h2>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-cyan-100">Live care workspace</p>
+                <h2 className="text-xl font-black mt-1 leading-tight sm:text-2xl">Sign in to manage real clinic flow.</h2>
               </div>
-              <div className="rounded-lg bg-white/15 p-2 border border-white/20">
+              <div className="shrink-0 rounded-lg bg-white/15 p-2 border border-white/20">
                 <Zap size={20} />
               </div>
             </div>
             <div className="mt-5 grid grid-cols-3 gap-2">
-              <div className="rounded-lg bg-white/12 p-2">
+              <div className="min-w-0 rounded-lg bg-white/12 p-2">
                 <p className="text-[10px] font-bold text-cyan-100">Auth</p>
-                <p className="text-sm font-black">{hasSupabaseConfig ? 'Live' : 'Demo'}</p>
+                <p className="text-[12px] font-black leading-tight sm:text-sm">{hasSupabaseConfig ? 'Live' : 'Setup'}</p>
               </div>
-              <div className="rounded-lg bg-white/12 p-2">
-                <p className="text-[10px] font-bold text-cyan-100">Backup</p>
-                <p className="text-sm font-black">OTP</p>
+              <div className="min-w-0 rounded-lg bg-white/12 p-2">
+                <p className="text-[10px] font-bold text-cyan-100">Data</p>
+                <p className="text-[12px] font-black leading-tight sm:text-sm">Supabase</p>
               </div>
-              <div className="rounded-lg bg-white/12 p-2">
-                <p className="text-[10px] font-bold text-cyan-100">Voice</p>
-                <p className="text-sm font-black">AI</p>
+              <div className="min-w-0 rounded-lg bg-white/12 p-2">
+                <p className="text-[10px] font-bold text-cyan-100">Pay</p>
+                <p className="text-[12px] font-black leading-tight sm:text-sm">UPI</p>
               </div>
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <div className="rounded-lg bg-white/12 border border-white/15 p-3 flex items-center gap-2">
-                <Bot size={17} className="text-cyan-100" />
-                <span className="text-xs font-black">AI triage ready</span>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div className="min-w-0 rounded-lg bg-white/12 border border-white/15 p-3 flex items-center gap-2">
+                <Shield size={17} className="shrink-0 text-cyan-100" />
+                <span className="text-xs font-black leading-tight">Real records only</span>
               </div>
-              <div className="rounded-lg bg-white/12 border border-white/15 p-3 flex items-center gap-2">
-                <AlertTriangle size={17} className="text-amber-100" />
-                <span className="text-xs font-black">Urgency aware</span>
+              <div className="min-w-0 rounded-lg bg-white/12 border border-white/15 p-3 flex items-center gap-2">
+                <AlertTriangle size={17} className="shrink-0 text-amber-100" />
+                <span className="text-xs font-black leading-tight">Manual checks</span>
               </div>
             </div>
           </div>
@@ -1099,62 +834,11 @@ function LoginView({ onLogin, showToast }) {
               Back to sign in
             </button>
           </form>
-        ) : mode === 'otp' ? (
-          <form onSubmit={handleVerifyOtp} className="space-y-5">
-            <div className="space-y-2 text-center">
-              <h2 className="text-xl font-black text-slate-900">Verify demo OTP</h2>
-              <p className="text-sm font-medium text-slate-500">Use this demo code to finish signup.</p>
-            </div>
-
-            <div className="rounded-2xl border border-cyan-100 bg-cyan-50 px-5 py-4 text-center">
-              <span className="block text-[10px] font-black uppercase text-cyan-700 mb-2">Demo OTP</span>
-              <span className="text-3xl font-black text-slate-900">{otpCode}</span>
-            </div>
-
-            <div className="group relative">
-              <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none transition-colors group-focus-within:text-cyan-500 text-slate-400"><Lock size={18} /></div>
-              <input inputMode="numeric" maxLength="6" placeholder="Enter OTP" value={otpInput} onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ''))} className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-5 py-4 text-slate-900 placeholder-slate-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 outline-none transition-all text-center font-black" required />
-            </div>
-
-            {error && <div className="bg-red-50 border border-red-100 text-red-600 text-xs font-semibold text-center py-3 rounded-xl">{error}</div>}
-
-            <Button className="w-full py-4 text-lg" disabled={loading}>
-              {loading ? <Loader2 className="animate-spin" /> : "Verify & Create Account"}
-            </Button>
-
-            <div className="grid grid-cols-2 gap-3 pt-1">
-              <button type="button" onClick={handleResendOtp} className="text-center text-cyan-700 text-sm hover:text-cyan-900 transition-colors font-bold">
-                Resend code
-              </button>
-              <button type="button" onClick={() => { setMode('register'); setError(''); }} className="text-center text-slate-500 text-sm hover:text-cyan-700 transition-colors font-bold">
-                Edit details
-              </button>
-            </div>
-          </form>
         ) : (
            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-2">
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => { if (hasSupabaseConfig) setAuthMode('live'); setError(''); }}
-                    disabled={!hasSupabaseConfig}
-                    className={`rounded-xl px-3 py-3 text-xs font-black transition-all ${authMode === 'live' ? 'bg-slate-950 text-white shadow-md shadow-slate-900/15' : 'text-slate-500 hover:bg-white disabled:opacity-45 disabled:hover:bg-transparent'}`}
-                  >
-                    Live server
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setAuthMode('mock'); setError(''); }}
-                    className={`rounded-xl px-3 py-3 text-xs font-black transition-all ${authMode === 'mock' ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/20' : 'text-slate-500 hover:bg-white'}`}
-                  >
-                    Demo OTP
-                  </button>
-                </div>
-                <p className="px-2 pt-3 pb-1 text-xs font-bold text-slate-500">
-                  {authMode === 'live'
-                    ? 'Creates a real Supabase Auth account on your live backend.'
-                    : 'Uses local OTP 123456 on this device, with no paid SMS or email service.'}
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-xs font-bold text-slate-500">
+                  Accounts are created on the live Supabase backend. Configure Supabase environment variables before launching.
                 </p>
               </div>
               <div className="flex p-1 bg-slate-100 rounded-2xl border border-slate-200">
@@ -1182,7 +866,7 @@ function LoginView({ onLogin, showToast }) {
               {error && <p className="text-red-600 text-xs font-semibold text-center bg-red-50 py-3 rounded-xl border border-red-100">{error}</p>}
               
               <Button onClick={handleRegisterSubmit} className="w-full py-4 text-lg mt-2" disabled={loading}>
-                 {loading ? <Loader2 className="animate-spin" /> : (authMode === 'live' ? "Create Live Account" : "Send Demo OTP")}
+                 {loading ? <Loader2 className="animate-spin" /> : "Create Account"}
               </Button>
               <button type="button" onClick={() => setMode('login')} className="w-full text-center pt-4 pb-2 text-slate-500 text-sm hover:text-cyan-700 transition-colors">
                  Already have an account? Sign In
@@ -1194,484 +878,30 @@ function LoginView({ onLogin, showToast }) {
   );
 }
 
-function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
-  const [showChat, setShowChat] = useState(false);
-  const [chatInput, setChatInput] = useState('');
-  const [chatMessages, setChatMessages] = useState([{ sender: 'ai', text: `Hi, I'm Rapha'l Assist. Describe a symptom or tap the mic and I will help you find the right specialist.` }]);
-  const [isListening, setIsListening] = useState(false);
-  const [isAssistantThinking, setIsAssistantThinking] = useState(false);
-  const [assistantProvider, setAssistantProvider] = useState(AI_ASSISTANT_ENDPOINT ? 'AI' : 'Local');
-  const [voiceSessionState, setVoiceSessionState] = useState('idle');
-  const [voiceStatus, setVoiceStatus] = useState('');
-  const voiceSupported = useMemo(() => typeof window !== 'undefined' && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition), []);
-  const liveVoiceSupported = useMemo(() => typeof window !== 'undefined' && Boolean(window.RTCPeerConnection && navigator.mediaDevices?.getUserMedia), []);
-  const chatEndRef = useRef(null);
-  const recognitionRef = useRef(null);
-  const realtimePeerRef = useRef(null);
-  const realtimeStreamRef = useRef(null);
-  const realtimeAudioRef = useRef(null);
-  const realtimeChannelRef = useRef(null);
-  const geminiRecorderRef = useRef(null);
-  const geminiChunksRef = useRef([]);
-  const geminiStreamRef = useRef(null);
-  const geminiStopTimerRef = useRef(null);
-  const lastVoiceReplyRef = useRef('');
-
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMessages, showChat]);
-
-  const speak = useCallback((text) => {
-    if (!('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    const voices = window.speechSynthesis.getVoices?.() || [];
-    const naturalVoice = voices.find(voice => /en-IN|India/i.test(`${voice.lang} ${voice.name}`))
-      || voices.find(voice => /Google|Microsoft|Natural|Neural/i.test(voice.name) && /^en/i.test(voice.lang))
-      || voices.find(voice => /^en/i.test(voice.lang));
-    if (naturalVoice) utterance.voice = naturalVoice;
-    utterance.lang = naturalVoice?.lang || 'en-IN';
-    utterance.rate = 0.98;
-    utterance.pitch = 1;
-    window.speechSynthesis.speak(utterance);
-  }, []);
-
-  const handleSendChat = useCallback(async (overrideText, speakResponse = false) => {
-    const message = (overrideText ?? chatInput).trim();
-    if (!message || isAssistantThinking) return;
-
-    setChatMessages(prev => [...prev, { sender: 'user', text: message }]);
-    setChatInput('');
-    setIsAssistantThinking(true);
-
-    const guidance = await askCareAssistant(message, doctors);
-    setAssistantProvider(guidance.provider === 'local' ? 'Local' : 'AI');
-    if (guidance.specialty && guidance.specialty !== 'Emergency Care') {
-      setSearchQuery(guidance.searchQuery || guidance.specialty);
-    } else if (guidance.shouldSearch) {
-      setSearchQuery(guidance.searchQuery || message);
-    }
-    if (guidance.shouldSearch) {
-      setTimeout(() => setView('search'), 700);
-    }
-    setChatMessages(prev => [...prev, { sender: 'ai', text: guidance.response }]);
-    setIsAssistantThinking(false);
-
-    if (speakResponse) {
-      window.setTimeout(() => {
-        if (speakResponse) {
-          speak(guidance.response);
-        }
-      }, 50);
-    }
-  }, [chatInput, doctors, isAssistantThinking, setSearchQuery, setView, speak]);
-
-  useEffect(() => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'en-IN';
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-    recognition.onresult = (event) => {
-      const transcript = event.results?.[0]?.[0]?.transcript || '';
-      if (transcript) {
-        setChatInput(transcript);
-        setTimeout(() => handleSendChat(transcript, true), 0);
-      }
-    };
-    recognition.onend = () => setIsListening(false);
-    recognition.onerror = (event) => {
-      setIsListening(false);
-      if (event?.error === 'aborted') return;
-      const errorCopy = {
-        'not-allowed': 'Microphone permission is blocked. Enable microphone access for this site and try again.',
-        'service-not-allowed': 'This browser blocked its speech service. Use the live AI voice button on the deployed app, or type your symptom.',
-        'audio-capture': 'No microphone was found. Connect or enable a microphone and try again.',
-        network: 'Browser speech recognition could not reach its speech service. Try the live AI voice mode or type your symptom.',
-        'no-speech': 'I did not catch speech yet. Try again and speak after the mic turns on.',
-      };
-      setShowChat(true);
-      setChatMessages(prev => [...prev, { sender: 'ai', text: errorCopy[event?.error] || 'Speech recognition stopped before it heard enough audio. Try again or type your symptom.' }]);
-    };
-    recognitionRef.current = recognition;
-
-    return () => recognition.stop();
-  }, [handleSendChat]);
-
-  const toggleVoice = useCallback(() => {
-    if (!recognitionRef.current) {
-      speak('Voice assistance is not supported in this browser.');
-      return;
-    }
-    if (isListening) {
-      recognitionRef.current.stop();
-      setIsListening(false);
-      return;
-    }
-    setShowChat(true);
-    try {
-      setIsListening(true);
-      recognitionRef.current.start();
-    } catch {
-      setIsListening(false);
-    }
-  }, [isListening, speak]);
-
-  const stopRealtimeVoice = useCallback((showMessage = false) => {
-    if (realtimeChannelRef.current) {
-      realtimeChannelRef.current.close();
-      realtimeChannelRef.current = null;
-    }
-    if (realtimePeerRef.current) {
-      realtimePeerRef.current.close();
-      realtimePeerRef.current = null;
-    }
-    if (realtimeStreamRef.current) {
-      realtimeStreamRef.current.getTracks().forEach(track => track.stop());
-      realtimeStreamRef.current = null;
-    }
-    if (realtimeAudioRef.current) {
-      realtimeAudioRef.current.remove();
-      realtimeAudioRef.current = null;
-    }
-    setVoiceSessionState('idle');
-    setVoiceStatus('');
-    if (showMessage) {
-      setChatMessages(prev => [...prev, { sender: 'ai', text: 'Live voice is paused. Tap the mic when you want to talk again.' }]);
-    }
-  }, []);
-
-  const stopGeminiVoice = useCallback((cancelOnly = false) => {
-    if (geminiStopTimerRef.current) {
-      window.clearTimeout(geminiStopTimerRef.current);
-      geminiStopTimerRef.current = null;
-    }
-
-    const recorder = geminiRecorderRef.current;
-    if (recorder && recorder.state !== 'inactive') {
-      if (cancelOnly) recorder.onstop = null;
-      recorder.stop();
-    }
-
-    if (cancelOnly) {
-      geminiStreamRef.current?.getTracks().forEach(track => track.stop());
-      geminiRecorderRef.current = null;
-      geminiStreamRef.current = null;
-      geminiChunksRef.current = [];
-      setVoiceSessionState('idle');
-      setVoiceStatus('');
-    }
-  }, []);
-
-  useEffect(() => () => {
-    stopGeminiVoice(true);
-    stopRealtimeVoice(false);
-  }, [stopGeminiVoice, stopRealtimeVoice]);
-
-  const routeFromVoiceTranscript = useCallback((transcript) => {
-    const guidance = generateCareGuidance(transcript, doctors);
-    if (guidance.shouldSearch) {
-      setSearchQuery(guidance.searchQuery || transcript);
-      window.setTimeout(() => setView('search'), 700);
-    }
-  }, [doctors, setSearchQuery, setView]);
-
-  const appendVoiceReply = useCallback((text) => {
-    const cleaned = String(text || '').trim();
-    if (!cleaned || cleaned === lastVoiceReplyRef.current) return;
-    lastVoiceReplyRef.current = cleaned;
-    setChatMessages(prev => [...prev, { sender: 'ai', text: cleaned }]);
-  }, []);
-
-  const startGeminiVoice = useCallback(async () => {
-    if (voiceSessionState === 'recording') {
-      setVoiceStatus('Sending your voice to Gemini');
-      stopGeminiVoice(false);
-      return;
-    }
-
-    if (voiceSessionState === 'connecting') return;
-
-    if (voiceSessionState === 'live') {
-      stopRealtimeVoice(false);
-    }
-
-    setShowChat(true);
-    if (isListening && recognitionRef.current) {
-      recognitionRef.current.stop();
-      setIsListening(false);
-    }
-
-    if (!GEMINI_VOICE_ENDPOINT) {
-      setChatMessages(prev => [...prev, { sender: 'ai', text: 'Gemini voice works when the app is running on Vercel or `vercel dev`. I will use browser dictation here so you can still speak.' }]);
-      if (voiceSupported) toggleVoice();
-      return;
-    }
-
-    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-      setChatMessages(prev => [...prev, { sender: 'ai', text: 'This browser needs microphone recording support for Gemini voice. Try Chrome or Edge on HTTPS, or type your symptom.' }]);
-      return;
-    }
-
-    try {
-      setAssistantProvider('Gemini');
-      setVoiceSessionState('recording');
-      setVoiceStatus('Listening with Gemini. Tap the mic again to send.');
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-      geminiStreamRef.current = stream;
-      geminiChunksRef.current = [];
-
-      const preferredMimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']
-        .find(type => MediaRecorder.isTypeSupported(type));
-      const recorder = new MediaRecorder(stream, preferredMimeType ? { mimeType: preferredMimeType } : undefined);
-      geminiRecorderRef.current = recorder;
-
-      recorder.ondataavailable = (event) => {
-        if (event.data?.size) geminiChunksRef.current.push(event.data);
-      };
-
-      recorder.onerror = () => {
-        setVoiceSessionState('idle');
-        setVoiceStatus('');
-        setChatMessages(prev => [...prev, { sender: 'ai', text: 'The microphone recorder stopped unexpectedly. Please try again.' }]);
-      };
-
-      recorder.onstop = async () => {
-        if (geminiStopTimerRef.current) {
-          window.clearTimeout(geminiStopTimerRef.current);
-          geminiStopTimerRef.current = null;
-        }
-        stream.getTracks().forEach(track => track.stop());
-        geminiStreamRef.current = null;
-        geminiRecorderRef.current = null;
-
-        const blob = new Blob(geminiChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
-        geminiChunksRef.current = [];
-        if (blob.size < 800) {
-          setVoiceSessionState('idle');
-          setVoiceStatus('');
-          setChatMessages(prev => [...prev, { sender: 'ai', text: 'I did not receive enough audio. Tap the mic, speak for a moment, then tap it again to send.' }]);
-          return;
-        }
-
-        setVoiceSessionState('connecting');
-        setVoiceStatus('Gemini is thinking');
-
-        try {
-          const audioBase64 = await blobToBase64(blob);
-          const response = await fetch(GEMINI_VOICE_ENDPOINT, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              audioBase64,
-              mimeType: blob.type || 'audio/webm',
-              doctors: doctors.slice(0, 20).map(doctor => ({
-                id: doctor.id,
-                name: doctor.name,
-                specialty: doctor.specialty,
-                district: doctor.district || doctor.location,
-                nextSlot: nextSlotFor(doctor),
-              })),
-            }),
-          });
-          const data = await response.json().catch(() => ({}));
-          if (!response.ok) throw new Error(data.error || 'Gemini voice is unavailable.');
-
-          const transcript = String(data.transcript || '').trim();
-          const reply = String(data.response || '').trim();
-          if (transcript) {
-            setChatMessages(prev => [...prev, { sender: 'user', text: transcript }]);
-            routeFromVoiceTranscript(transcript);
-          }
-          if (reply) {
-            setChatMessages(prev => [...prev, { sender: 'ai', text: reply }]);
-            speak(reply);
-          }
-          if (data.specialty && data.specialty !== 'Emergency Care') {
-            setSearchQuery(data.searchQuery || data.specialty);
-          } else if (data.shouldSearch && (data.searchQuery || transcript)) {
-            setSearchQuery(data.searchQuery || transcript);
-          }
-          if (data.shouldSearch) {
-            window.setTimeout(() => setView('search'), 700);
-          }
-        } catch (err) {
-          setChatMessages(prev => [...prev, { sender: 'ai', text: err?.message || 'Gemini voice could not answer yet. Check GEMINI_API_KEY in Vercel and try again.' }]);
-        } finally {
-          setVoiceSessionState('idle');
-          setVoiceStatus('');
-        }
-      };
-
-      recorder.start();
-      geminiStopTimerRef.current = window.setTimeout(() => {
-        if (geminiRecorderRef.current?.state === 'recording') {
-          setVoiceStatus('Sending your voice to Gemini');
-          geminiRecorderRef.current.stop();
-        }
-      }, 10000);
-    } catch (err) {
-      stopGeminiVoice(true);
-      const message = err?.name === 'NotAllowedError'
-        ? 'Microphone permission is blocked. Enable microphone access for this site and try again.'
-        : err?.message || 'Unable to start Gemini voice.';
-      setChatMessages(prev => [...prev, { sender: 'ai', text: message }]);
-    }
-  }, [doctors, isListening, routeFromVoiceTranscript, setSearchQuery, setView, speak, stopGeminiVoice, stopRealtimeVoice, toggleVoice, voiceSessionState, voiceSupported]);
-
-  const handleRealtimeEvent = useCallback((event) => {
-    if (!event?.type) return;
-
-    if (event.type === 'conversation.item.input_audio_transcription.completed') {
-      const transcript = event.transcript?.trim();
-      if (transcript) {
-        setChatMessages(prev => [...prev, { sender: 'user', text: transcript }]);
-        routeFromVoiceTranscript(transcript);
-      }
-      return;
-    }
-
-    if (['response.audio_transcript.done', 'response.output_text.done'].includes(event.type)) {
-      appendVoiceReply(event.transcript || event.text || event.output_text);
-      return;
-    }
-
-    if (event.type === 'error') {
-      const message = event.error?.message || 'The live voice session had a problem. Please restart the mic.';
-      setChatMessages(prev => [...prev, { sender: 'ai', text: message }]);
-      setVoiceStatus('Voice session needs restart');
-    }
-  }, [appendVoiceReply, routeFromVoiceTranscript]);
-
-  const startRealtimeVoice = useCallback(async () => {
-    if (voiceSessionState === 'connecting' || voiceSessionState === 'live') {
-      stopRealtimeVoice(true);
-      return;
-    }
-
-    setShowChat(true);
-    if (isListening && recognitionRef.current) {
-      recognitionRef.current.stop();
-      setIsListening(false);
-    }
-
-    if (!REALTIME_SESSION_ENDPOINT) {
-      setChatMessages(prev => [...prev, { sender: 'ai', text: 'Live AI voice is available on the Vercel deployment after OPENAI_API_KEY is set. I will use browser dictation here so you can still speak your symptom.' }]);
-      if (voiceSupported) toggleVoice();
-      return;
-    }
-
-    if (!liveVoiceSupported) {
-      setChatMessages(prev => [...prev, { sender: 'ai', text: 'This browser needs HTTPS, WebRTC, and microphone permission for live AI voice. Try the deployed site in Chrome or Edge, or type your symptom.' }]);
-      return;
-    }
-
-    setVoiceSessionState('connecting');
-    setVoiceStatus('Requesting microphone');
-    lastVoiceReplyRef.current = '';
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-      realtimeStreamRef.current = stream;
-
-      const peer = new RTCPeerConnection();
-      realtimePeerRef.current = peer;
-
-      const audio = document.createElement('audio');
-      audio.autoplay = true;
-      audio.setAttribute('playsinline', 'true');
-      audio.style.display = 'none';
-      document.body.appendChild(audio);
-      realtimeAudioRef.current = audio;
-
-      peer.ontrack = (event) => {
-        audio.srcObject = event.streams[0];
-        audio.play().catch(() => {});
-      };
-      peer.onconnectionstatechange = () => {
-        if (['failed', 'closed', 'disconnected'].includes(peer.connectionState)) {
-          setVoiceStatus(peer.connectionState === 'disconnected' ? 'Reconnecting voice' : '');
-        }
-      };
-
-      stream.getAudioTracks().forEach(track => peer.addTrack(track, stream));
-
-      const channel = peer.createDataChannel('oai-events');
-      realtimeChannelRef.current = channel;
-      channel.onopen = () => {
-        setAssistantProvider('Voice AI');
-        setVoiceStatus('Listening and ready to talk');
-      };
-      channel.onmessage = (event) => {
-        try {
-          handleRealtimeEvent(JSON.parse(event.data));
-        } catch {
-          // The Realtime API uses JSON events; ignore anything malformed.
-        }
-      };
-      channel.onerror = () => {
-        setVoiceStatus('Voice channel interrupted');
-      };
-
-      setVoiceStatus('Connecting to AI voice');
-      const offer = await peer.createOffer();
-      await peer.setLocalDescription(offer);
-
-      const response = await fetch(REALTIME_SESSION_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/sdp',
-          'X-Raphael-Doctors': encodeURIComponent(JSON.stringify(doctors.slice(0, 12).map(doctor => ({
-            name: doctor.name,
-            specialty: doctor.specialty,
-            district: doctor.district || doctor.location,
-            nextSlot: nextSlotFor(doctor),
-          })))),
-        },
-        body: offer.sdp,
-      });
-
-      const answerSdp = await response.text();
-      if (!response.ok) throw new Error(answerSdp || 'Unable to start live AI voice.');
-      if (!answerSdp.trim()) throw new Error('The voice server did not return a WebRTC answer.');
-
-      await peer.setRemoteDescription({ type: 'answer', sdp: answerSdp });
-      setVoiceSessionState('live');
-      setAssistantProvider('Voice AI');
-      setVoiceStatus('Listening and ready to talk');
-      setChatMessages(prev => [...prev, { sender: 'ai', text: 'I am listening now. Tell me what is going on, and I will talk it through with you.' }]);
-    } catch (err) {
-      stopRealtimeVoice(false);
-      const details = friendlyNetworkError(err, 'Unable to start live AI voice.');
-      setChatMessages(prev => [...prev, { sender: 'ai', text: `${details} Make sure OPENAI_API_KEY is set in Vercel and microphone permission is allowed.` }]);
-    }
-  }, [doctors, handleRealtimeEvent, isListening, liveVoiceSupported, stopRealtimeVoice, toggleVoice, voiceSessionState, voiceSupported]);
-
-  const startVoiceAssistant = useCallback(() => {
-    if (VOICE_PROVIDER === 'openai') {
-      startRealtimeVoice();
-      return;
-    }
-    startGeminiVoice();
-  }, [startGeminiVoice, startRealtimeVoice]);
-
+function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor, onOpenNotifications, unreadCount = 0 }) {
+  const [symptomInput, setSymptomInput] = useState('');
+  const [routing, setRouting] = useState(false);
   const featuredDoctors = doctors.slice(0, 3);
   const specialties = uniqueSpecialties();
-  const voiceActive = voiceSessionState === 'live' || voiceSessionState === 'recording';
+
+  const routeToCare = useCallback((value) => {
+    const query = String(value ?? symptomInput).trim();
+    if (!query) return;
+
+    setSearchQuery(specialtyForInput(query) || query);
+    setRouting(true);
+    window.setTimeout(() => {
+      setRouting(false);
+      setView('search');
+    }, 220);
+  }, [setSearchQuery, setView, symptomInput]);
+
+  const searchDirectly = useCallback((value) => {
+    const query = String(value ?? symptomInput).trim();
+    if (!query) return;
+    setSearchQuery(query);
+    setView('search');
+  }, [setSearchQuery, setView, symptomInput]);
 
   return (
     <div className="relative space-y-6 pb-28 flex-1 app-screen min-h-full">
@@ -1680,26 +910,34 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
           <div>
             <Badge type="success"><BadgeCheck size={12} /> Verified network</Badge>
             <h1 className="mt-4 text-4xl font-black leading-[1.02] text-slate-950">
-              Healthcare that feels fast, bright, and personal.
+              Book trusted care from live provider records.
             </h1>
           </div>
-          <button type="button" className="pro-icon-button">
+          <button type="button" onClick={onOpenNotifications} className="pro-icon-button relative">
             <Bell size={19} />
+            {unreadCount > 0 && <span className="absolute -right-1 -top-1 h-5 min-w-5 rounded-full bg-red-500 px-1 text-[10px] font-black leading-5 text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
           </button>
         </div>
 
-        <div className="relative z-10 pro-command-bar">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            searchDirectly();
+          }}
+          className="relative z-10 pro-command-bar"
+        >
           <Search className="absolute left-4 top-4 text-slate-400" size={20} />
           <input
             type="text"
             placeholder="Search doctors, symptoms, specialties"
+            value={symptomInput}
             className="w-full h-14 pl-12 pr-14 rounded-lg bg-white text-slate-900 placeholder-slate-400 outline-none font-semibold"
-            onChange={(e) => { setSearchQuery(e.target.value); if (e.target.value.length > 2) setView('search'); }}
+            onChange={(e) => setSymptomInput(e.target.value)}
           />
-          <button type="button" onClick={startVoiceAssistant} className={`absolute right-2 top-2 p-2.5 rounded-lg transition-colors ${voiceActive ? 'bg-emerald-50 text-emerald-600' : voiceSessionState === 'connecting' ? 'bg-cyan-50 text-cyan-700' : 'bg-slate-950 text-white hover:bg-slate-800'}`}>
-            {voiceSessionState === 'connecting' ? <Loader2 size={16} className="animate-spin" /> : voiceActive ? <MicOff size={16}/> : <Mic size={16}/>}
+          <button type="submit" className="absolute right-2 top-2 p-2.5 rounded-lg bg-slate-950 text-white hover:bg-slate-800 transition-colors">
+            <ArrowRight size={16} />
           </button>
-        </div>
+        </form>
 
         <div className="relative z-10 mt-4 grid grid-cols-3 gap-2">
           {[
@@ -1707,7 +945,7 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
             { prompt: 'chest pain', icon: HeartPulse },
             { prompt: 'skin rash', icon: Sparkles },
           ].map(({ prompt, icon: Icon }) => (
-            <button key={prompt} onClick={() => { setShowChat(true); handleSendChat(prompt); }} className="quick-chip">
+            <button key={prompt} onClick={() => routeToCare(prompt)} className="quick-chip">
               {React.createElement(Icon, { size: 14 })} {prompt}
             </button>
           ))}
@@ -1716,20 +954,22 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
 
       <div className="px-5 space-y-6">
         <div className="grid grid-cols-3 gap-3">
-          <MetricPill icon={Users} label="Doctors" value={doctors.length || 3} tone="text-cyan-700 bg-cyan-50 border-cyan-100" />
-          <MetricPill icon={Video} label="Assist" value="Voice" tone="text-indigo-700 bg-indigo-50 border-indigo-100" />
+          <MetricPill icon={Users} label="Doctors" value={doctors.length} tone="text-cyan-700 bg-cyan-50 border-cyan-100" />
+          <MetricPill icon={ClipboardCheck} label="Booking" value="Live" tone="text-indigo-700 bg-indigo-50 border-indigo-100" />
           <MetricPill icon={Wallet} label="Pay" value="UPI" tone="text-emerald-700 bg-emerald-50 border-emerald-100" />
         </div>
 
         <div className="pro-card p-5 overflow-hidden">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-xs font-black text-slate-500 uppercase">Rapha'l Assist</p>
-              <h2 className="text-2xl font-black text-slate-950 mt-1">Smart symptom routing</h2>
-              <p className="text-sm font-semibold text-slate-500 mt-2">Describe symptoms by voice or text and jump straight to matching specialists.</p>
+              <p className="text-xs font-black text-slate-500 uppercase">Care finder</p>
+              <h2 className="text-2xl font-black text-slate-950 mt-1">Find the right specialty</h2>
+              <p className="text-sm font-semibold text-slate-500 mt-2">
+                Search symptoms, specialties, districts, or provider names across real available records.
+              </p>
             </div>
-            <button onClick={() => setShowChat(true)} className="h-14 w-14 rounded-lg bg-slate-950 text-white flex items-center justify-center shadow-lg shadow-slate-900/20">
-              <MessageSquare size={22} />
+            <button onClick={() => routeToCare()} className="h-14 w-14 rounded-lg bg-slate-950 text-white flex items-center justify-center shadow-lg shadow-slate-900/20">
+              {routing ? <Loader2 size={22} className="animate-spin" /> : <ArrowRight size={22} />}
             </button>
           </div>
         </div>
@@ -1770,64 +1010,15 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor }) {
                 onClick={() => { setSelectedDoctor(doctor); setView('detail'); }}
               />
             ))}
-          </div>
-        </section>
-      </div>
-
-      <div className="absolute bottom-24 right-5 z-50 flex flex-col items-end">
-        {showChat && (
-          <div className="bg-white/95 backdrop-blur-2xl rounded-lg shadow-[0_24px_70px_-25px_rgba(15,23,42,0.38)] w-[85vw] sm:w-80 flex flex-col border border-slate-200 mb-4 overflow-hidden transform animate-in slide-in-from-bottom-4 fade-in duration-300">
-            <div className="bg-slate-950 text-white p-4 flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <div className="bg-white/15 p-1.5 rounded-lg"><Sparkles size={16} /></div>
-                <div>
-                  <span className="font-bold text-sm block">Rapha'l Assist</span>
-                  <span className="text-[10px] font-bold text-cyan-100">{voiceSessionState === 'recording' ? 'Gemini listening' : voiceSessionState === 'live' ? 'Live voice' : voiceSessionState === 'connecting' ? 'Thinking voice' : `${assistantProvider} triage`}</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button onClick={startVoiceAssistant} className={`p-1.5 rounded-md transition-colors ${voiceActive ? 'bg-emerald-400 text-slate-950' : 'bg-white/10 hover:bg-white/20'}`}>
-                  {voiceSessionState === 'connecting' ? <Loader2 size={16} className="animate-spin" /> : voiceActive ? <MicOff size={16} /> : <Mic size={16} />}
-                </button>
-                <button onClick={() => speak(chatMessages[chatMessages.length - 1]?.text || '')} className="bg-white/10 hover:bg-white/20 p-1.5 rounded-md transition-colors"><Volume2 size={16} /></button>
-                <button onClick={() => setShowChat(false)} className="bg-white/10 hover:bg-white/20 p-1.5 rounded-md transition-colors"><X size={16} /></button>
-              </div>
-            </div>
-            {voiceStatus && (
-              <div className="bg-cyan-50 border-b border-cyan-100 px-4 py-2 text-[11px] font-black text-cyan-800 flex items-center gap-2">
-                <span className={`h-2 w-2 rounded-full ${voiceActive ? 'bg-emerald-500' : 'bg-cyan-500 animate-pulse'}`} />
-                {voiceStatus}
+            {featuredDoctors.length === 0 && (
+              <div className="pro-card border-dashed p-6 text-center">
+                <Users size={32} className="mx-auto mb-3 text-slate-300" />
+                <h3 className="text-lg font-black text-slate-900">No live providers yet</h3>
+                <p className="mt-2 text-sm font-semibold text-slate-500">Add doctors in Supabase or register a provider account to populate this list.</p>
               </div>
             )}
-            <div className="h-64 overflow-y-auto p-4 space-y-4 bg-slate-50/50">
-              {chatMessages.map((msg, i) => (
-                <div key={i} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] p-3 text-sm shadow-sm rounded-lg ${msg.sender === 'user' ? 'bg-cyan-600 text-white' : 'bg-white border border-slate-100 text-slate-700 font-medium'}`}>
-                    {msg.text}
-                  </div>
-                </div>
-              ))}
-              {isAssistantThinking && (
-                <div className="flex justify-start">
-                  <div className="bg-white border border-slate-100 text-slate-500 rounded-lg px-3 py-2 text-sm font-bold shadow-sm flex items-center gap-2">
-                    <Loader2 size={14} className="animate-spin text-cyan-600" /> Thinking
-                  </div>
-                </div>
-              )}
-              <div ref={chatEndRef} />
-            </div>
-            <div className="p-3 bg-white border-t border-slate-100 flex gap-2">
-              <button type="button" onClick={startVoiceAssistant} className={`p-2.5 rounded-lg transition-colors ${voiceActive ? 'bg-emerald-50 text-emerald-600' : voiceSessionState === 'connecting' ? 'bg-cyan-50 text-cyan-700' : isListening ? 'bg-red-50 text-red-500' : 'bg-cyan-50 text-cyan-700 hover:bg-cyan-100'}`}>
-                {voiceSessionState === 'connecting' ? <Loader2 size={16} className="animate-spin" /> : voiceActive || isListening ? <MicOff size={16}/> : <Mic size={16}/>}
-              </button>
-              <input type="text" placeholder="Type a symptom..." value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendChat()} className="flex-1 bg-slate-100 rounded-lg px-4 py-2 outline-none text-sm focus:ring-2 focus:ring-cyan-500/20 focus:bg-white border border-transparent focus:border-cyan-200 transition-all" />
-              <button onClick={() => handleSendChat()} disabled={isAssistantThinking} className="p-2.5 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white rounded-lg transition-colors shadow-md shadow-cyan-500/20"><Send size={16} /></button>
-            </div>
           </div>
-        )}
-        <button onClick={() => setShowChat(!showChat)} className="p-4 rounded-lg bg-slate-950 text-white shadow-2xl shadow-slate-900/25 hover:scale-105 active:scale-95 transition-all duration-300">
-          {showChat ? <X size={24} /> : <MessageSquare size={24} />}
-        </button>
+        </section>
       </div>
     </div>
   );
@@ -1839,8 +1030,8 @@ function SearchView({ searchQuery, setSearchQuery, doctors, setView, setSelected
     if (activeCategory && activeCategory !== 'All') results = results.filter(d => d.specialty === activeCategory);
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      const detected = Object.keys(SYMPTOM_MAP).find(k => q.includes(k));
-      if (detected) results = results.filter(d => d.specialty === SYMPTOM_MAP[detected]);
+      const detectedSpecialty = specialtyForInput(q);
+      if (detectedSpecialty) results = results.filter(d => d.specialty === detectedSpecialty);
       else results = results.filter(d => d.name.toLowerCase().includes(q) || d.specialty.toLowerCase().includes(q) || (d.district && d.district.toLowerCase().includes(q)));
     }
     return results;
@@ -1883,7 +1074,9 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
   if (!doctor) return null;
   const meta = specialtyMeta(doctor.specialty);
   const Icon = meta.icon;
-  const slots = doctor.slots?.length ? doctor.slots : ['09:00 AM', '11:00 AM', '02:00 PM'];
+  const slots = normalizeSlots(doctor.slots);
+  const hasFee = numericAmount(doctor.price) > 0;
+  const approved = isProviderApproved(doctor);
 
   return (
     <div className="h-full flex flex-col app-screen">
@@ -1908,7 +1101,7 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
           </div>
           <div className="rounded-lg bg-white/15 border border-white/15 p-3">
             <p className="text-[10px] font-bold text-cyan-50">Experience</p>
-            <p className="text-lg font-black">{doctor.experience || '5 Years'}</p>
+            <p className="text-lg font-black">{doctor.experience || 'Not listed'}</p>
           </div>
           <div className="rounded-lg bg-white/15 border border-white/15 p-3">
             <p className="text-[10px] font-bold text-cyan-50">Next</p>
@@ -1920,11 +1113,11 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
       <div className="flex-1 overflow-y-auto px-5 py-6 pb-36 space-y-5">
         <div className="pro-card p-5">
           <SectionHeader eyebrow="About" title="Specialist profile" />
-          <p className="text-slate-600 text-sm leading-relaxed font-semibold mt-3">{doctor.bio || "Leading specialist available for consultation. Bringing years of experience and dedicated patient care to Rapha'l Health."}</p>
+          <p className="text-slate-600 text-sm leading-relaxed font-semibold mt-3">{doctor.bio || "This provider has not added profile details yet."}</p>
           <div className="mt-4 grid grid-cols-2 gap-3">
             <div className={`rounded-lg border px-3 py-3 ${meta.soft}`}>
               <Shield size={16} />
-              <p className="mt-2 text-xs font-black">Verified provider</p>
+              <p className="mt-2 text-xs font-black">{approved ? 'Verified provider' : 'Provider under review'}</p>
             </div>
             <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-3 text-amber-700">
               <Star size={16} className="fill-amber-400 text-amber-400" />
@@ -1949,6 +1142,11 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
                   {slot}
                 </button>
             ))}
+            {slots.length === 0 && (
+              <div className="col-span-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center text-sm font-bold text-slate-500">
+                No appointment slots have been added yet.
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1961,8 +1159,8 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
            </div>
            <span className="text-3xl font-black text-slate-950">{displayAmount(doctor.price)}</span>
         </div>
-        <Button variant="accent" className="w-full" onClick={handleBook} disabled={!selectedSlot}>
-           {selectedSlot ? `Confirm Booking for ${selectedSlot}` : 'Select a Time Slot'}
+        <Button variant="accent" className="w-full" onClick={handleBook} disabled={!selectedSlot || !hasFee || !approved}>
+           {!approved ? 'Provider Under Review' : !hasFee ? 'Consultation Fee Not Set' : selectedSlot ? `Confirm Booking for ${selectedSlot}` : 'Select a Time Slot'}
         </Button>
       </div>
     </div>
@@ -1971,9 +1169,10 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
 
 const appointmentStatusMessage = (appointment) => {
   if (appointment.status === 'Cancelled') return 'Doctor declined this request. You can book another slot or choose a different specialist.';
-  if (appointment.status === 'Accepted' && appointment.payment_status === 'Unpaid') return 'Doctor accepted your request. Choose UPI or cash to continue.';
-  if (appointment.payment_status === 'Pending Verification') return 'Payment choice is recorded and waiting for clinic verification.';
-  if (appointment.status === 'Confirmed') return 'Your visit is confirmed. Keep this appointment visible at the clinic.';
+  if (appointment.payment_status === 'Rejected') return `Payment proof was rejected${appointment.payment_rejection_reason ? `: ${appointment.payment_rejection_reason}` : '. Please recheck the UTR and submit again.'}`;
+  if (appointment.status === 'Accepted' && appointment.payment_status === 'Unpaid') return 'Doctor accepted your request. Pay by UPI, then submit the UTR for admin verification.';
+  if (isPaymentSubmitted(appointment)) return 'Payment proof submitted. Admin will match the UTR and complete the booking.';
+  if (isPaymentVerified(appointment)) return 'Your visit is confirmed. Keep this appointment visible at the clinic.';
   return 'Request sent. The doctor will accept or decline it from their provider console.';
 };
 
@@ -1981,15 +1180,54 @@ const appointmentSteps = (appointment) => {
   const accepted = ['Accepted', 'Confirmed'].includes(appointment.status);
   const declined = appointment.status === 'Cancelled';
   const paymentStarted = appointment.payment_status && appointment.payment_status !== 'Unpaid';
+  const verified = isPaymentVerified(appointment);
   return [
     { label: 'Requested', done: true },
     { label: declined ? 'Declined' : 'Doctor review', done: accepted || declined, danger: declined },
     { label: 'Payment', done: accepted && paymentStarted, disabled: declined },
-    { label: 'Clinic verify', done: appointment.status === 'Confirmed' || appointment.payment_status === 'Pending Verification', disabled: declined },
+    { label: 'Admin verify', done: verified, disabled: declined },
   ];
 };
 
-function DashboardView({ appointments, onPayNow, onPayCash }) {
+function AppointmentTimeline({ events = [], limit = 3, compact = false }) {
+  const visibleEvents = events.slice(0, limit);
+  if (!visibleEvents.length) return null;
+
+  return (
+    <div className={`rounded-lg border border-slate-100 bg-white/80 ${compact ? 'p-3' : 'p-4'}`}>
+      <div className="mb-3 flex items-center gap-2">
+        <Clock size={14} className="text-cyan-700" />
+        <p className="text-[10px] font-black uppercase text-slate-500">Activity</p>
+      </div>
+      <div className="space-y-3">
+        {visibleEvents.map((event) => {
+          const meta = APPOINTMENT_EVENT_META[event.event_type] || { icon: Activity, tone: 'bg-slate-50 text-slate-700 border-slate-100' };
+          const Icon = meta.icon;
+          return (
+            <div key={event.id} className="flex gap-3">
+              <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${meta.tone}`}>
+                <Icon size={14} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="min-w-0 text-xs font-black text-slate-900 break-words">{event.title}</p>
+                  <span className="shrink-0 text-right text-[10px] font-bold text-slate-400">{formatEventTime(event.created_at)}</span>
+                </div>
+                <p className={`${compact ? 'truncate' : ''} mt-1 text-xs font-semibold text-slate-500`}>{event.body}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function DashboardView({ appointments, appointmentEvents = {}, doctors = [], onOpenUpi, onSubmitPayment, onPayCash, platformFeePercent = DEFAULT_PLATFORM_FEE_PERCENT }) {
+  const [utrInputs, setUtrInputs] = useState({});
+  const doctorLookup = useMemo(() => new Map(doctors.map(doctor => [String(doctor.id), doctor])), [doctors]);
+  const setUtrFor = (id, value) => setUtrInputs(prev => ({ ...prev, [id]: value }));
+
   if (!appointments.length) return (
     <div className="p-6 text-center flex flex-col items-center justify-center h-full app-screen pb-28">
       <div className="pro-card p-8 w-full">
@@ -2015,7 +1253,12 @@ function DashboardView({ appointments, onPayNow, onPayCash }) {
        </div>
        
        {appointments.map(apt => {
-         const isAwaitingPayment = apt.status === 'Accepted' && apt.payment_status === 'Unpaid';
+         const canSubmitPayment = apt.status === 'Accepted' && ['Unpaid', 'Rejected'].includes(apt.payment_status || 'Unpaid');
+         const enteredUtr = utrInputs[apt.id] ?? apt.transaction_id ?? '';
+         const receiverDoctor = doctorLookup.get(String(apt.doctor_id));
+         const receiver = paymentReceiverFor(receiverDoctor);
+         const paymentReceiver = apt.payment_receiver_upi || receiver.upi;
+         const receiverLabel = paymentReceiver || 'Payment receiver not configured';
          return (
            <div key={apt.id} className="pro-card p-5">
              <div className="flex justify-between items-start mb-6">
@@ -2040,6 +1283,7 @@ function DashboardView({ appointments, onPayNow, onPayCash }) {
              </div>
              <div className="mt-3 rounded-lg bg-slate-50 border border-slate-100 px-3 py-2 text-xs font-bold text-slate-500">
                 Payment: {apt.payment_status || 'Unpaid'}
+                {apt.transaction_id ? <span className="block mt-1 text-slate-700">UTR: {apt.transaction_id}</span> : null}
              </div>
 
              <div className="mt-4 rounded-lg border border-slate-100 bg-white p-3">
@@ -2056,12 +1300,53 @@ function DashboardView({ appointments, onPayNow, onPayCash }) {
                  <p>{appointmentStatusMessage(apt)}</p>
                </div>
              </div>
+             <div className="mt-4">
+               <AppointmentTimeline events={appointmentEvents[String(apt.id)] || []} limit={4} />
+             </div>
              
-             {isAwaitingPayment && (
-               <div className="mt-6 flex gap-3">
-                 <Button onClick={() => onPayNow(apt)} variant="accent" className="flex-1 text-sm py-3 shadow-none">Pay via UPI</Button>
-                 <Button onClick={() => onPayCash(apt)} variant="secondary" className="flex-1 text-sm py-3">Pay Cash</Button>
+             {canSubmitPayment && (
+               <div className="mt-6 rounded-lg border border-cyan-100 bg-cyan-50/70 p-4 space-y-3">
+                 <div>
+                   <p className="text-xs font-black uppercase text-cyan-700">Payment required</p>
+                   <p className="text-sm font-bold text-slate-700 mt-1">
+                     {paymentReceiver
+                       ? `Pay to ${receiverLabel}, then submit the UTR number shown in your UPI app.`
+                       : 'Payment receiver is not configured yet. Ask the clinic or choose cash at clinic.'}
+                   </p>
+                 </div>
+                 <Button onClick={() => onOpenUpi(apt)} variant="accent" className="w-full text-sm py-3 shadow-none" disabled={!paymentReceiver}>
+                   <Wallet size={16} /> Open UPI App
+                 </Button>
+                 <div className="flex gap-2">
+                   <input
+                     value={enteredUtr}
+                     onChange={(event) => setUtrFor(apt.id, cleanUtr(event.target.value))}
+                     placeholder="Enter UTR / transaction ID"
+                     className="min-w-0 flex-1 rounded-lg border border-cyan-100 bg-white px-3 py-3 text-sm font-black uppercase text-slate-900 outline-none focus:border-cyan-300 focus:ring-4 focus:ring-cyan-100"
+                   />
+                   <button
+                     type="button"
+                     onClick={() => onSubmitPayment(apt, enteredUtr)}
+                     disabled={!paymentReceiver}
+                     className={`rounded-lg bg-slate-950 px-4 py-3 text-sm font-black text-white transition-colors hover:bg-slate-800 ${!paymentReceiver ? 'cursor-not-allowed opacity-50' : ''}`}
+                   >
+                     Submit
+                   </button>
+                 </div>
+                 <button onClick={() => onPayCash(apt)} className="w-full text-center text-xs font-black text-slate-500 hover:text-cyan-700">
+                   Paying cash at clinic instead
+                 </button>
                </div>
+             )}
+             {isPaymentSubmitted(apt) && (
+               <div className="mt-6 rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+                 Admin verification is pending. You will be notified after the UTR is matched.
+               </div>
+             )}
+             {isPaymentVerified(apt) && (
+               <Button onClick={() => generateReceipt(apt, platformFeePercent)} variant="secondary" className="mt-6 w-full text-sm py-3">
+                 <FileText size={16} /> Download Receipt
+               </Button>
              )}
            </div>
          );
@@ -2207,8 +1492,9 @@ function ProfileView({ user, logout, onSaveProfile }) {
   );
 }
 
-function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile }) {
+function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile, onOpenNotifications, unreadCount = 0 }) {
   const [appointments, setAppointments] = useState([]);
+  const [appointmentEvents, setAppointmentEvents] = useState({});
   const [profileOpen, setProfileOpen] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [doctorForm, setDoctorForm] = useState({
@@ -2225,7 +1511,6 @@ function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile }) {
     slots: (doctor?.slots || ['09:00 AM', '10:00 AM', '02:00 PM']).join(', '),
   });
   const doctorId = user?.doctorId;
-  const usingMockData = isMockUser(user);
 
   useEffect(() => {
     setDoctorForm({
@@ -2243,43 +1528,75 @@ function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile }) {
     });
   }, [doctor, user]);
   
-  useEffect(() => {
-    let active = true;
-    const fetchApts = async () => {
+  const fetchDoctorAppointments = useCallback(async () => {
       if (doctorId) {
-         if (usingMockData || !supabase) {
-           if (active) setAppointments(getLocalDoctorAppointments(doctorId));
+         if (!supabase) {
+           setAppointments([]);
+           setAppointmentEvents({});
            return;
          }
 
          try {
            const { data, error } = await supabase.from('appointments').select().eq('doctor_id', doctorId);
            if (error) throw error;
-           if (data && active) setAppointments(data);
-         } catch {
-           if (active) setAppointments(getLocalDoctorAppointments(doctorId));
+           const rows = data || [];
+           setAppointments(rows);
+           try {
+             setAppointmentEvents(await fetchAppointmentEventsFor(rows.map(appointment => appointment.id)));
+           } catch {
+             setAppointmentEvents({});
+           }
+         } catch (err) {
+           setAppointments([]);
+           setAppointmentEvents({});
+           showToast(friendlyNetworkError(err, 'Unable to load appointment requests.'), 'error');
          }
+      } else {
+         setAppointments([]);
+         setAppointmentEvents({});
       }
-    };
-    fetchApts();
+  }, [doctorId, showToast]);
+
+  useEffect(() => {
+    let active = true;
+    if (active) fetchDoctorAppointments();
     return () => { active = false; };
-  }, [doctorId, usingMockData]);
+  }, [fetchDoctorAppointments]);
+
+  useEffect(() => {
+    if (!supabase || !doctorId) return undefined;
+    const channel = supabase
+      .channel(`doctor-appointments-${doctorId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments', filter: `doctor_id=eq.${doctorId}` }, () => {
+        fetchDoctorAppointments();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [doctorId, fetchDoctorAppointments]);
 
   const handleAction = async (id, action) => {
     const status = action === 'accept' ? 'Accepted' : 'Cancelled';
 
-    if (isMockUser(user) || !supabase || String(id).startsWith('mock-appt')) {
-      updateLocalAppointment(id, { status });
-      setAppointments(prev => prev.map(apt => String(apt.id) === String(id) ? { ...apt, status } : apt));
-      showToast(action === 'accept' ? 'Appointment accepted' : 'Appointment declined');
+    if (!supabase) {
+      showToast('Live backend is not configured.', 'error');
       return;
     }
 
     try {
-      const { error } = await supabase.from('appointments').update({ status }).eq('id', id);
+      const { data, error } = await supabase.rpc('doctor_decide_appointment', {
+        p_appointment_id: id,
+        p_accept: action === 'accept',
+      });
       if (error) throw error;
-      setAppointments(prev => prev.map(apt => apt.id === id ? { ...apt, status } : apt));
+      const updatedAppointment = appointmentFromRpc(data);
+      setAppointments(prev => prev.map(apt => (
+        apt.id === id ? (updatedAppointment || { ...apt, status }) : apt
+      )));
       showToast(action === 'accept' ? 'Appointment accepted' : 'Appointment declined');
+      dispatchPushNotifications();
     } catch (err) {
       showToast(friendlyNetworkError(err, 'Unable to update appointment.'), 'error');
     }
@@ -2317,6 +1634,7 @@ function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile }) {
 
   const inputClass = "w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-cyan-300 focus:ring-4 focus:ring-cyan-100";
   const pendingAppointments = appointments.filter(a => a.status === 'Pending Approval');
+  const currentProviderStatus = providerStatus(doctor);
 
   return (
     <div className="min-h-screen app-screen p-5 font-sans space-y-5">
@@ -2329,13 +1647,32 @@ function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile }) {
             <span className="text-xs font-bold text-cyan-700">Provider console</span>
           </div>
         </div>
-        <button onClick={logout} className="pro-icon-button text-red-600 bg-red-50 border-red-100 hover:bg-red-100"><LogOut size={18} /></button>
+        <div className="flex items-center gap-2">
+          <button onClick={onOpenNotifications} className="pro-icon-button relative">
+            <Bell size={18} />
+            {unreadCount > 0 && <span className="absolute -right-1 -top-1 h-5 min-w-5 rounded-full bg-red-500 px-1 text-[10px] font-black leading-5 text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+          </button>
+          <button onClick={logout} className="pro-icon-button text-red-600 bg-red-50 border-red-100 hover:bg-red-100"><LogOut size={18} /></button>
+        </div>
         </div>
         <div className="grid grid-cols-2 gap-3 mt-5">
+          <MetricPill icon={Shield} label="Status" value={providerStatusText(currentProviderStatus)} tone={currentProviderStatus === 'approved' ? 'text-emerald-700 bg-emerald-50 border-emerald-100' : 'text-amber-700 bg-amber-50 border-amber-100'} />
           <MetricPill icon={ClipboardCheck} label="Pending" value={pendingAppointments.length} tone="text-amber-700 bg-amber-50 border-amber-100" />
           <MetricPill icon={CheckCircle} label="Accepted" value={appointments.filter(a => a.status === 'Accepted').length} tone="text-emerald-700 bg-emerald-50 border-emerald-100" />
         </div>
       </div>
+
+      {currentProviderStatus !== 'approved' && (
+        <div className="rounded-lg border border-amber-100 bg-amber-50 p-4 text-amber-800">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-black">Profile under review</p>
+              <p className="mt-1 text-xs font-bold leading-relaxed">Patients can book after admin approval. Keep your fee, UPI, clinic, and slots ready.</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="pro-card p-5 space-y-4">
         <div className="flex items-center justify-between gap-3">
@@ -2387,6 +1724,7 @@ function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile }) {
               </div>
               <Badge type="warning">New</Badge>
             </div>
+            <AppointmentTimeline events={appointmentEvents[String(apt.id)] || []} limit={2} compact />
             <div className="flex gap-3">
               <Button onClick={() => handleAction(apt.id, 'accept')} variant="accent" className="flex-1 py-3 text-sm shadow-none"><Check size={16}/> Accept</Button>
               <Button onClick={() => handleAction(apt.id, 'reject')} variant="secondary" className="flex-1 py-3 text-sm"><X size={16}/> Decline</Button>
@@ -2403,12 +1741,15 @@ function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile }) {
           <div className="space-y-3">
             <SectionHeader eyebrow="History" title="Handled requests" />
             {appointments.filter(a => a.status !== 'Pending Approval').map(apt => (
-              <div key={apt.id} className="pro-card p-4 flex items-center justify-between gap-3">
-                <div>
-                  <p className="font-black text-slate-950">{apt.patient_name}</p>
-                  <p className="text-xs font-bold text-slate-500">{shortDate(apt.appointment_date)} at {apt.slot}</p>
+              <div key={apt.id} className="pro-card p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-black text-slate-950">{apt.patient_name}</p>
+                    <p className="text-xs font-bold text-slate-500">{shortDate(apt.appointment_date)} at {apt.slot}</p>
+                  </div>
+                  <Badge type={apt.status === 'Accepted' ? 'success' : 'warning'}>{apt.status}</Badge>
                 </div>
-                <Badge type={apt.status === 'Accepted' ? 'success' : 'warning'}>{apt.status}</Badge>
+                <AppointmentTimeline events={appointmentEvents[String(apt.id)] || []} limit={2} compact />
               </div>
             ))}
           </div>
@@ -2418,33 +1759,558 @@ function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile }) {
   );
 }
 
-function AdminDashboard({ logout, doctors }) {
+function AdminDashboard({
+  user,
+  logout,
+  doctors,
+  showToast,
+  onOpenNotifications,
+  unreadCount = 0,
+  onDoctorsChanged = () => {},
+  platformFeePercent = DEFAULT_PLATFORM_FEE_PERCENT,
+  onPlatformFeeChanged = () => {},
+}) {
+  const [adminAppointments, setAdminAppointments] = useState([]);
+  const [adminAuditEvents, setAdminAuditEvents] = useState([]);
+  const [appointmentEvents, setAppointmentEvents] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [notes, setNotes] = useState({});
+  const [feeDraft, setFeeDraft] = useState(String(platformFeePercent));
+  const [savingFee, setSavingFee] = useState(false);
+  const doctorLookup = useMemo(() => new Map(doctors.map(doctor => [String(doctor.id), doctor])), [doctors]);
+
+  useEffect(() => {
+    setFeeDraft(String(platformFeePercent));
+  }, [platformFeePercent]);
+
+  const fetchAdminAppointments = useCallback(async () => {
+    if (!supabase) {
+      setAdminAppointments([]);
+      setAppointmentEvents({});
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('appointments')
+        .select()
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      const rows = data || [];
+      setAdminAppointments(rows);
+      try {
+        setAppointmentEvents(await fetchAppointmentEventsFor(rows.map(appointment => appointment.id)));
+      } catch {
+        setAppointmentEvents({});
+      }
+    } catch (err) {
+      setAppointmentEvents({});
+      showToast(friendlyNetworkError(err, 'Unable to load admin payment queue.'), 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [showToast]);
+
+  const fetchAdminAuditEvents = useCallback(async () => {
+    if (!supabase || user?.role !== 'admin') {
+      setAdminAuditEvents([]);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('admin_audit_events')
+        .select('id, event_type, entity_type, entity_id, title, body, metadata, created_at')
+        .order('created_at', { ascending: false })
+        .limit(12);
+      if (error) throw error;
+      setAdminAuditEvents(data || []);
+    } catch {
+      setAdminAuditEvents([]);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    fetchAdminAppointments();
+    fetchAdminAuditEvents();
+  }, [fetchAdminAppointments, fetchAdminAuditEvents]);
+
+  useEffect(() => {
+    if (!supabase || user?.role !== 'admin') return undefined;
+    const channel = supabase
+      .channel('admin-appointment-payments')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, () => {
+        fetchAdminAppointments();
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'admin_audit_events' }, () => {
+        fetchAdminAuditEvents();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchAdminAppointments, fetchAdminAuditEvents, showToast, user]);
+
+  const runAdminAppointmentRpc = async (rpcName, params, successMessage) => {
+    if (!supabase) {
+      showToast('Live backend is not configured.', 'error');
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase.rpc(rpcName, params);
+      if (error) throw error;
+      const updatedAppointment = appointmentFromRpc(data);
+      if (updatedAppointment) {
+        setAdminAppointments(prev => prev.map(item => item.id === updatedAppointment.id ? updatedAppointment : item));
+      }
+      showToast(successMessage);
+      dispatchPushNotifications();
+      fetchAdminAppointments();
+      fetchAdminAuditEvents();
+    } catch (err) {
+      showToast(friendlyNetworkError(err, 'Unable to update appointment.'), 'error');
+    }
+  };
+
+  const verifyPayment = (appointment) => {
+    runAdminAppointmentRpc('admin_verify_payment', {
+      p_appointment_id: appointment.id,
+      p_admin_notes: notes[appointment.id] || appointment.admin_notes || '',
+    }, 'Payment verified. Booking completed.');
+  };
+
+  const rejectPayment = (appointment) => {
+    runAdminAppointmentRpc('admin_reject_payment', {
+      p_appointment_id: appointment.id,
+      p_reason: notes[appointment.id] || 'UTR not found or amount mismatch.',
+    }, 'Payment proof rejected.');
+  };
+
+  const markPayoutPaid = (appointment) => {
+    runAdminAppointmentRpc('admin_mark_payout_paid', {
+      p_appointment_id: appointment.id,
+    }, 'Doctor payout marked paid.');
+  };
+
+  const savePlatformFee = async () => {
+    if (!supabase) {
+      showToast('Live backend is not configured.', 'error');
+      return;
+    }
+
+    const nextFee = Number(feeDraft);
+    if (!Number.isFinite(nextFee) || nextFee < 0 || nextFee > 50) {
+      showToast('Platform fee must be between 0 and 50%.', 'error');
+      return;
+    }
+
+    setSavingFee(true);
+    try {
+      const { data, error } = await supabase.rpc('admin_set_platform_fee_percent', {
+        p_percent: nextFee,
+      });
+      if (error) throw error;
+      onPlatformFeeChanged(Number(data ?? nextFee));
+      showToast('Platform fee updated.');
+      fetchAdminAuditEvents();
+    } catch (err) {
+      showToast(friendlyNetworkError(err, 'Unable to update platform fee.'), 'error');
+    } finally {
+      setSavingFee(false);
+    }
+  };
+
+  const reviewProvider = async (doctor, status) => {
+    if (!supabase) {
+      showToast('Live backend is not configured.', 'error');
+      return;
+    }
+
+    try {
+      const { error } = await supabase.rpc('admin_set_doctor_verification', {
+        p_doctor_id: doctor.id,
+        p_status: status,
+      });
+      if (error) throw error;
+      showToast(status === 'approved' ? 'Provider approved.' : 'Provider review updated.');
+      onDoctorsChanged();
+      fetchAdminAuditEvents();
+    } catch (err) {
+      showToast(friendlyNetworkError(err, 'Unable to review provider.'), 'error');
+    }
+  };
+
+  const copyDoctorUpi = async (upiId) => {
+    if (!upiId) return;
+    try {
+      if (!window.navigator?.clipboard?.writeText) {
+        throw new Error('Clipboard API unavailable');
+      }
+      await window.navigator.clipboard.writeText(upiId);
+      showToast('Doctor UPI copied.');
+    } catch {
+      showToast('Unable to copy UPI.', 'error');
+    }
+  };
+
+  const paymentQueue = adminAppointments.filter(appointment => isPaymentSubmitted(appointment));
+  const verifiedAppointments = adminAppointments.filter(appointment => isPaymentVerified(appointment));
+  const payoutDueAppointments = verifiedAppointments.filter(appointment => appointment.payout_status !== 'Paid');
+  const pendingProviders = doctors.filter(doctor => providerStatus(doctor) === 'pending');
+  const approvedProviders = doctors.filter(isProviderApproved);
+  const duePayoutTotal = payoutDueAppointments.reduce((sum, appointment) => sum + (Number(appointment.doctor_payout_amount) || settlementForAmount(appointment.amount, platformFeePercent).doctorShare), 0);
+  const payoutRows = doctors
+    .map((doctor) => {
+      const doctorAppointments = verifiedAppointments.filter(appointment => String(appointment.doctor_id) === String(doctor.id));
+      const dueAppointments = doctorAppointments.filter(appointment => appointment.payout_status !== 'Paid');
+      const paidAppointments = doctorAppointments.filter(appointment => appointment.payout_status === 'Paid');
+      const totalCollected = doctorAppointments.reduce((sum, appointment) => sum + numericAmount(appointment.amount), 0);
+      const platformShare = doctorAppointments.reduce((sum, appointment) => sum + (Number(appointment.platform_fee_amount) || settlementForAmount(appointment.amount, platformFeePercent).platformFee), 0);
+      const doctorShare = doctorAppointments.reduce((sum, appointment) => sum + (Number(appointment.doctor_payout_amount) || settlementForAmount(appointment.amount, platformFeePercent).doctorShare), 0);
+      const dueShare = dueAppointments.reduce((sum, appointment) => sum + (Number(appointment.doctor_payout_amount) || settlementForAmount(appointment.amount, platformFeePercent).doctorShare), 0);
+      const paidShare = paidAppointments.reduce((sum, appointment) => sum + (Number(appointment.doctor_payout_amount) || settlementForAmount(appointment.amount, platformFeePercent).doctorShare), 0);
+      return {
+        doctorName: doctor.name,
+        doctorUpi: doctor.upi_id || '',
+        totalAppointments: doctorAppointments.length,
+        dueAppointments: dueAppointments.length,
+        paidAppointments: paidAppointments.length,
+        totalCollected,
+        platformShare,
+        doctorShare,
+        dueShare,
+        paidShare,
+      };
+    })
+    .filter(row => row.totalAppointments > 0);
+
   return (
-    <div className="min-h-screen app-screen text-slate-900 p-5 font-sans space-y-5">
+    <div className="min-h-screen app-screen text-slate-900 p-5 font-sans space-y-5 pb-10">
       <div className="pro-card p-5">
         <div className="flex justify-between items-center">
           <div>
             <p className="text-xs font-black text-cyan-700 uppercase">Operations</p>
             <h1 className="text-3xl font-black flex items-center gap-2 text-slate-950"><Shield className="text-cyan-600"/> Admin</h1>
           </div>
-          <button onClick={logout} className="pro-icon-button text-red-600 bg-red-50 border-red-100 hover:bg-red-100"><LogOut size={18} /></button>
+          <div className="flex items-center gap-2">
+            <button onClick={onOpenNotifications} className="pro-icon-button relative">
+              <Bell size={18} />
+              {unreadCount > 0 && <span className="absolute -right-1 -top-1 h-5 min-w-5 rounded-full bg-red-500 px-1 text-[10px] font-black leading-5 text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+            </button>
+            <button onClick={logout} className="pro-icon-button text-red-600 bg-red-50 border-red-100 hover:bg-red-100"><LogOut size={18} /></button>
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-3 mt-5">
-          <MetricPill icon={Users} label="Providers" value={doctors.length} tone="text-cyan-700 bg-cyan-50 border-cyan-100" />
-          <MetricPill icon={TrendingUp} label="Status" value="Live" tone="text-emerald-700 bg-emerald-50 border-emerald-100" />
+          <MetricPill icon={Users} label="Approved" value={approvedProviders.length} tone="text-cyan-700 bg-cyan-50 border-cyan-100" />
+          <MetricPill icon={Shield} label="Provider review" value={pendingProviders.length} tone="text-violet-700 bg-violet-50 border-violet-100" />
+          <MetricPill icon={ClipboardCheck} label="Verify" value={paymentQueue.length} tone="text-amber-700 bg-amber-50 border-amber-100" />
+          <MetricPill icon={TrendingUp} label="Payouts" value={formatMoney(duePayoutTotal)} tone="text-emerald-700 bg-emerald-50 border-emerald-100" />
+        </div>
+        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <div className="flex items-end gap-3">
+            <label className="min-w-0 flex-1">
+              <span className="text-[10px] font-black uppercase text-slate-500">Platform fee</span>
+              <div className="mt-1 flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2">
+                <input
+                  type="number"
+                  min="0"
+                  max="50"
+                  step="0.1"
+                  value={feeDraft}
+                  onChange={(event) => setFeeDraft(event.target.value)}
+                  className="min-w-0 flex-1 bg-transparent text-sm font-black text-slate-900 outline-none"
+                />
+                <span className="text-sm font-black text-slate-400">%</span>
+              </div>
+            </label>
+            <button
+              type="button"
+              onClick={savePlatformFee}
+              disabled={savingFee}
+              className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg bg-slate-950 px-4 text-xs font-black text-white transition-colors hover:bg-cyan-700 disabled:opacity-50"
+            >
+              {savingFee ? <Loader2 size={16} className="animate-spin" /> : 'Save'}
+            </button>
+          </div>
         </div>
       </div>
+
+      <div className="pro-card p-5 space-y-4">
+        <SectionHeader eyebrow="Audit trail" title="Recent admin actions" />
+        {adminAuditEvents.length === 0 && (
+          <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-7 text-center">
+            <FileText className="mx-auto mb-3 text-slate-300" size={28} />
+            <p className="text-sm font-black text-slate-700">No admin actions recorded yet.</p>
+          </div>
+        )}
+        {adminAuditEvents.map((event) => {
+          const meta = ADMIN_AUDIT_META[event.event_type] || { icon: ClipboardCheck, tone: 'bg-slate-50 text-slate-700 border-slate-100' };
+          const Icon = meta.icon;
+          return (
+            <div key={event.id} className="flex items-start gap-3 rounded-lg border border-slate-100 bg-slate-50 p-3">
+              <div className={`shrink-0 rounded-lg border p-2 ${meta.tone}`}>
+                <Icon size={16} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="min-w-0 text-sm font-black text-slate-950">{event.title}</p>
+                  <span className="shrink-0 text-[10px] font-bold text-slate-400">{formatEventTime(event.created_at)}</span>
+                </div>
+                <p className="mt-1 text-xs font-bold leading-relaxed text-slate-500">{event.body}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="pro-card p-5 space-y-4">
+        <SectionHeader eyebrow="Provider review" title="Approve specialists" />
+        {pendingProviders.length === 0 && (
+          <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
+            <Shield className="mx-auto mb-3 text-slate-300" size={30} />
+            <p className="text-sm font-black text-slate-700">No provider profiles waiting.</p>
+          </div>
+        )}
+        {pendingProviders.map((doctor) => (
+          <div key={doctor.id} className="rounded-lg border border-violet-100 bg-violet-50/70 p-4 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-black text-slate-950">{doctor.name}</p>
+                <p className="text-xs font-bold text-slate-600">{doctor.specialty} - {doctor.district || doctor.location || 'Location not set'}</p>
+              </div>
+              <Badge type="warning">Pending</Badge>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs font-bold text-slate-700">
+              <div className="rounded-lg border border-violet-100 bg-white/85 p-3">Fee<br/><span className="text-base font-black">{displayAmount(doctor.price)}</span></div>
+              <div className="rounded-lg border border-violet-100 bg-white/85 p-3">UPI<br/><span className="text-base font-black break-all">{doctor.upi_id || 'Missing'}</span></div>
+              <div className="col-span-2 rounded-lg border border-violet-100 bg-white/85 p-3">Clinic<br/><span className="text-sm font-black">{doctor.clinic_name || doctor.location || 'Not set'}</span></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Button onClick={() => reviewProvider(doctor, 'approved')} variant="accent" className="py-3 text-sm shadow-none"><Check size={16}/> Approve</Button>
+              <Button onClick={() => reviewProvider(doctor, 'rejected')} variant="secondary" className="py-3 text-sm"><X size={16}/> Reject</Button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="pro-card p-5 space-y-4">
+        <SectionHeader eyebrow="Manual UTR" title="Payment verification" />
+        {loading && (
+          <div className="flex items-center justify-center py-8 text-cyan-700">
+            <Loader2 className="animate-spin" />
+          </div>
+        )}
+        {!loading && paymentQueue.length === 0 && (
+          <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
+            <CheckCircle className="mx-auto mb-3 text-emerald-500" size={30} />
+            <p className="text-sm font-black text-slate-700">No payment proofs waiting.</p>
+          </div>
+        )}
+        {paymentQueue.map((appointment) => {
+          const review = paymentReviewFor(appointment, adminAppointments, platformFeePercent);
+          const settlement = review.settlement;
+          return (
+            <div key={appointment.id} className="rounded-lg border border-amber-100 bg-amber-50/70 p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-black text-slate-950">{appointment.patient_name}</p>
+                  <p className="text-xs font-bold text-slate-600">{appointment.doctor_name} - {shortDate(appointment.appointment_date)} at {appointment.slot}</p>
+                </div>
+                <Badge type={review.ready ? 'success' : 'warning'}>{review.ready ? 'Ready' : 'Review'}</Badge>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs font-bold text-slate-700">
+                <div className="rounded-lg bg-white/80 p-3 border border-amber-100">Amount<br/><span className="text-base font-black">{displayAmount(appointment.amount)}</span></div>
+                <div className="rounded-lg bg-white/80 p-3 border border-amber-100">UTR<br/><span className="text-base font-black break-all">{appointment.transaction_id || 'Cash'}</span></div>
+                <div className="rounded-lg bg-white/80 p-3 border border-amber-100">Doctor payout<br/><span className="text-base font-black">{formatMoney(settlement.doctorShare)}</span></div>
+                <div className="rounded-lg bg-white/80 p-3 border border-amber-100">Platform fee<br/><span className="text-base font-black">{formatMoney(settlement.platformFee)}</span></div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {review.checks.map((check) => (
+                  <div key={check.label} className={`rounded-lg border bg-white/85 p-3 ${check.pass ? 'border-emerald-100 text-emerald-700' : 'border-red-100 text-red-700'}`}>
+                    <div className="flex items-center gap-2">
+                      {check.pass ? <CheckCircle size={14} /> : <AlertTriangle size={14} />}
+                      <p className="text-[10px] font-black uppercase">{check.label}</p>
+                    </div>
+                    <p className="mt-1 truncate text-xs font-bold text-slate-700">{check.detail}</p>
+                  </div>
+                ))}
+              </div>
+              <AppointmentTimeline events={appointmentEvents[String(appointment.id)] || []} limit={4} />
+              <textarea
+                value={notes[appointment.id] || ''}
+                onChange={(event) => setNotes(prev => ({ ...prev, [appointment.id]: event.target.value }))}
+                placeholder="Admin note or rejection reason"
+                className="w-full rounded-lg border border-amber-100 bg-white px-3 py-3 text-sm font-bold text-slate-800 outline-none focus:border-amber-300 focus:ring-4 focus:ring-amber-100"
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <Button onClick={() => verifyPayment(appointment)} variant="accent" className="py-3 text-sm shadow-none" disabled={!review.ready}><Check size={16}/> Verify</Button>
+                <Button onClick={() => rejectPayment(appointment)} variant="secondary" className="py-3 text-sm"><X size={16}/> Reject</Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="pro-card p-5 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <SectionHeader eyebrow="Settlement" title="Doctor payouts" />
+          <button
+            type="button"
+            onClick={() => generateAdminReport(payoutRows)}
+            disabled={!payoutRows.length}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 transition-colors hover:border-cyan-300 hover:text-cyan-700 disabled:opacity-40"
+          >
+            Report
+          </button>
+        </div>
+        {payoutRows.length === 0 && (
+          <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm font-bold text-slate-500">
+            Verified appointments will create payout totals here.
+          </div>
+        )}
+        {payoutRows.map((row) => (
+          <div key={row.doctorName} className="rounded-lg border border-slate-100 bg-slate-50 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-black text-slate-950">{row.doctorName}</p>
+                <p className="text-xs font-bold text-slate-500">{row.dueAppointments} due of {row.totalAppointments} verified visits</p>
+                {row.doctorUpi && <p className="mt-1 text-[11px] font-bold text-slate-400 truncate">UPI: {row.doctorUpi}</p>}
+              </div>
+              <p className="text-lg font-black text-emerald-700">{formatMoney(row.dueShare)}</p>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs font-bold text-slate-600">
+              <div className="rounded-md bg-white p-2">Collected: {formatMoney(row.totalCollected)}</div>
+              <div className="rounded-md bg-white p-2">Platform: {formatMoney(row.platformShare)}</div>
+              <div className="rounded-md bg-white p-2">Doctor share: {formatMoney(row.doctorShare)}</div>
+              <div className="rounded-md bg-white p-2">Paid: {formatMoney(row.paidShare)}</div>
+            </div>
+          </div>
+        ))}
+        {payoutDueAppointments.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-black uppercase text-slate-500">Mark individual payouts</p>
+            {payoutDueAppointments.map((appointment) => (
+              <div key={appointment.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-white p-3">
+                <div className="min-w-0">
+                  {(() => {
+                    const payoutDoctor = doctorLookup.get(String(appointment.doctor_id));
+                    return (
+                      <>
+                        <p className="truncate text-sm font-black text-slate-900">{appointment.doctor_name}</p>
+                        <p className="text-xs font-bold text-slate-500">#{appointment.id} - {formatMoney(appointment.doctor_payout_amount || settlementForAmount(appointment.amount, platformFeePercent).doctorShare)}</p>
+                        {payoutDoctor?.upi_id && <p className="mt-1 truncate text-[11px] font-bold text-slate-400">UPI: {payoutDoctor.upi_id}</p>}
+                      </>
+                    );
+                  })()}
+                  {(appointmentEvents[String(appointment.id)] || [])[0] && (
+                    <p className="mt-1 truncate text-[11px] font-bold text-slate-400">{(appointmentEvents[String(appointment.id)] || [])[0].title}</p>
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {doctorLookup.get(String(appointment.doctor_id))?.upi_id && (
+                    <button
+                      type="button"
+                      aria-label={`Copy UPI for ${appointment.doctor_name}`}
+                      title={`Copy UPI for ${appointment.doctor_name}`}
+                      onClick={() => copyDoctorUpi(doctorLookup.get(String(appointment.doctor_id))?.upi_id)}
+                      className="rounded-lg bg-slate-50 px-3 py-2 text-xs font-black text-slate-600 hover:bg-cyan-50 hover:text-cyan-700"
+                    >
+                      <Copy size={14} />
+                    </button>
+                  )}
+                  <button onClick={() => markPayoutPaid(appointment)} className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100">
+                    Paid
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="pro-card p-5">
         <SectionHeader eyebrow="Directory" title="Registered providers" />
         <div className="space-y-3">
           {doctors.map(doc => (
-            <div key={doc.id} className="bg-slate-50 p-4 rounded-lg border border-slate-100 flex justify-between items-center hover:border-cyan-200 transition-colors mt-3">
-              <div>
+            <div key={doc.id} className="bg-slate-50 p-4 rounded-lg border border-slate-100 flex items-center justify-between gap-3 hover:border-cyan-200 transition-colors mt-3">
+              <div className="min-w-0">
                 <h3 className="font-black text-slate-950 text-lg">{doc.name}</h3>
                 <p className="text-sm font-bold text-cyan-700">{doc.specialty}</p>
               </div>
-              <ChevronRight size={20} className="text-slate-500" />
+              <div className="flex shrink-0 items-center gap-2">
+                <Badge type={providerStatusTone(providerStatus(doc))}>{providerStatusText(providerStatus(doc))}</Badge>
+                {providerStatus(doc) !== 'approved' && (
+                  <button onClick={() => reviewProvider(doc, 'approved')} className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100">
+                    Approve
+                  </button>
+                )}
+                {providerStatus(doc) === 'approved' && (
+                  <button onClick={() => reviewProvider(doc, 'suspended')} className="rounded-lg bg-red-50 px-3 py-2 text-xs font-black text-red-700 hover:bg-red-100">
+                    Suspend
+                  </button>
+                )}
+              </div>
             </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NotificationCenter({ open, notifications, onClose, onMarkRead, onMarkAllRead }) {
+  if (!open) return null;
+
+  const unreadCount = notifications.filter(item => !item.read_at).length;
+
+  return (
+    <div className="absolute inset-0 z-[90] bg-slate-950/35 backdrop-blur-sm animate-in fade-in">
+      <div className="absolute inset-x-4 top-6 max-h-[82vh] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.28)] view-panel">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-100 p-4">
+          <div>
+            <p className="text-xs font-black uppercase text-cyan-700">Updates</p>
+            <h2 className="text-xl font-black text-slate-950">Notifications</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            {unreadCount > 0 && (
+              <button onClick={onMarkAllRead} className="rounded-lg bg-cyan-50 px-3 py-2 text-xs font-black text-cyan-700 hover:bg-cyan-100">
+                Mark all
+              </button>
+            )}
+            <button onClick={onClose} className="pro-icon-button h-10 w-10"><X size={17} /></button>
+          </div>
+        </div>
+
+        <div className="max-h-[68vh] overflow-y-auto p-4 space-y-3 scrollbar-hide">
+          {notifications.length === 0 && (
+            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center">
+              <Bell size={30} className="mx-auto mb-3 text-slate-300" />
+              <p className="text-sm font-black text-slate-600">No notifications yet.</p>
+            </div>
+          )}
+          {notifications.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onMarkRead(item)}
+              className={`w-full rounded-lg border p-4 text-left transition-all ${
+                item.read_at
+                  ? 'border-slate-100 bg-slate-50 text-slate-600'
+                  : 'border-cyan-100 bg-cyan-50 text-slate-900 shadow-sm'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-black">{item.title}</p>
+                  <p className="mt-1 text-xs font-bold leading-relaxed">{item.body}</p>
+                </div>
+                {!item.read_at && <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-cyan-500" />}
+              </div>
+              <p className="mt-3 text-[10px] font-black uppercase text-slate-400">{shortDate(item.created_at)}</p>
+            </button>
           ))}
         </div>
       </div>
@@ -2460,17 +2326,57 @@ export default function App() {
   const [view, setView] = useState('login');
   const [doctors, setDoctors] = useState([]);
   const [appointments, setAppointments] = useState([]);
+  const [appointmentEvents, setAppointmentEvents] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
   const [selectedDoctor, setSelectedDoctor] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const selectedDate = useMemo(() => new Date(), []);
   const [notification, setNotification] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [loadingAuth, setLoadingAuth] = useState(true);
+  const [platformFeePercent, setPlatformFeePercent] = useState(DEFAULT_PLATFORM_FEE_PERCENT);
+  const unreadNotificationCount = notifications.filter(item => !item.read_at).length;
 
   const showToast = useCallback((msg, type='success') => {
      setNotification({msg, type});
      setTimeout(() => setNotification(null), 3500);
+  }, []);
+
+  const fetchDoctors = useCallback(async () => {
+     if (!supabase) {
+        setDoctors([]);
+        return;
+     }
+
+     try {
+        const { data, error } = await supabase
+          .from('doctors')
+          .select()
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        setDoctors(mergeDoctors(data || []));
+     } catch (err) {
+        setDoctors([]);
+        showToast(friendlyNetworkError(err, 'Unable to load doctors.'), 'error');
+     }
+  }, [showToast]);
+
+  const fetchPlatformFeePercent = useCallback(async () => {
+     if (!supabase) {
+        setPlatformFeePercent(DEFAULT_PLATFORM_FEE_PERCENT);
+        return;
+     }
+
+     try {
+        const { data, error } = await supabase.rpc('platform_fee_percent');
+        if (error) throw error;
+        const nextFee = Number(data);
+        setPlatformFeePercent(Number.isFinite(nextFee) ? nextFee : DEFAULT_PLATFORM_FEE_PERCENT);
+     } catch {
+        setPlatformFeePercent(DEFAULT_PLATFORM_FEE_PERCENT);
+     }
   }, []);
 
   useEffect(() => {
@@ -2486,20 +2392,12 @@ export default function App() {
            return;
         }
 
-        if (isMockUser(sessionUser)) {
-           if (active) {
-              setUser(sessionUser);
-              setView(routeForRole(sessionUser.role));
-              setLoadingAuth(false);
-           }
-           return;
-        }
-
         try {
            const profile = await loadUserProfile(sessionUser);
            if (profile && active) {
               setUser(profile);
               setView(routeForRole(profile.role));
+              fetchDoctors();
            }
         } catch (err) {
            if (active) {
@@ -2511,34 +2409,15 @@ export default function App() {
         if (active) setLoadingAuth(false);
      };
 
-     const loadDoctors = async () => {
-        let remoteDoctors = [];
-        if (supabase) {
-           try {
-              const { data, error } = await supabase.from('doctors').select();
-              if (error) throw error;
-              remoteDoctors = data || [];
-           } catch {
-              remoteDoctors = [];
-           }
-        }
-        if (active) setDoctors(mergeDoctors(remoteDoctors, getLocalDoctors(), DEFAULT_DOCTORS));
-     };
-
-     const mockSession = getMockSession();
-     loadDoctors();
-
-     if (mockSession) {
-        loadData(mockSession);
-        return () => { active = false; };
-     }
+     fetchDoctors();
+     fetchPlatformFeePercent();
 
      if (!supabase) {
         setLoadingAuth(false);
         return () => { active = false; };
      }
 
-     supabase.auth.getSession()
+     withTimeout(supabase.auth.getSession(), 2500)
        .then(({ data: { session } }) => {
           if (active) loadData(session?.user);
        })
@@ -2557,46 +2436,218 @@ export default function App() {
         active = false; 
         subscription.unsubscribe(); 
      };
-  }, [showToast]);
+  }, [fetchDoctors, fetchPlatformFeePercent, showToast]);
 
   const fetchPatientAppointments = useCallback(async () => {
      if (user?.id) {
-        if (isMockUser(user) || !supabase) {
-           setAppointments(getLocalPatientAppointments(user.id));
+        if (!supabase) {
+           setAppointments([]);
+           setAppointmentEvents({});
            return;
         }
 
         try {
            const { data, error } = await supabase.from('appointments').select().eq('patient_id', user.id).order('created_at', { ascending: false });
            if (error) throw error;
-           if (data) setAppointments(data);
-        } catch {
-           setAppointments(getLocalPatientAppointments(user.id));
+           const rows = data || [];
+           setAppointments(rows);
+           try {
+             setAppointmentEvents(await fetchAppointmentEventsFor(rows.map(appointment => appointment.id)));
+           } catch {
+             setAppointmentEvents({});
+           }
+        } catch (err) {
+           setAppointments([]);
+           setAppointmentEvents({});
+           showToast(friendlyNetworkError(err, 'Unable to load appointments.'), 'error');
         }
      }
-  }, [user]);
+  }, [showToast, user]);
+
+  const fetchNotifications = useCallback(async () => {
+     if (!user?.id || !supabase) {
+        setNotifications([]);
+        return;
+     }
+
+     try {
+        const { data, error } = await supabase
+          .from('notifications')
+          .select()
+          .eq('recipient_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(40);
+        if (error) throw error;
+        setNotifications(data || []);
+     } catch (err) {
+        showToast(friendlyNetworkError(err, 'Unable to load notifications.'), 'error');
+     }
+  }, [showToast, user]);
 
   useEffect(() => {
-     let active = true;
-     const load = async () => {
-        if (user?.id && user.role === 'patient' && view === 'dashboard') {
-           if (isMockUser(user) || !supabase) {
-              if (active) setAppointments(getLocalPatientAppointments(user.id));
-              return;
-           }
+     fetchNotifications();
+  }, [fetchNotifications]);
 
-           try {
-              const { data, error } = await supabase.from('appointments').select().eq('patient_id', user.id).order('created_at', { ascending: false });
-              if (error) throw error;
-              if (active && data) setAppointments(data);
-           } catch {
-              if (active) setAppointments(getLocalPatientAppointments(user.id));
-           }
+  useEffect(() => {
+     if (!supabase || !user?.id || !Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('PushNotifications')) {
+        return undefined;
+     }
+
+     let active = true;
+     const listenerHandles = [];
+
+     const savePushToken = async (tokenValue) => {
+        const token = String(tokenValue || '').trim();
+        if (!token || !active) return;
+
+        const now = new Date().toISOString();
+        const platform = Capacitor.getPlatform();
+        const deviceId = getStoredDeviceId();
+        await supabase
+          .from('device_tokens')
+          .update({ enabled: false, updated_at: now })
+          .eq('user_id', user.id)
+          .eq('device_id', deviceId)
+          .neq('token', token);
+        const { error } = await supabase
+          .from('device_tokens')
+          .upsert({
+             user_id: user.id,
+             token,
+             platform,
+             device_id: deviceId,
+             enabled: true,
+             last_seen_at: now,
+             updated_at: now,
+          }, { onConflict: 'user_id,token' });
+        if (error) throw error;
+
+        await supabase
+          .from('users')
+          .update({ push_token: token })
+          .eq('id', user.id);
+     };
+
+     const setupPushNotifications = async () => {
+        listenerHandles.push(await PushNotifications.addListener('registration', ({ value }) => {
+           savePushToken(value).catch(() => undefined);
+        }));
+        listenerHandles.push(await PushNotifications.addListener('registrationError', () => undefined));
+        listenerHandles.push(await PushNotifications.addListener('pushNotificationReceived', (pushNotification) => {
+           if (!active) return;
+           showToast(pushNotification.title || 'New booking update', 'info');
+           fetchNotifications();
+           if (user.role === 'patient') fetchPatientAppointments();
+        }));
+        listenerHandles.push(await PushNotifications.addListener('pushNotificationActionPerformed', () => {
+           if (!active) return;
+           setNotificationsOpen(true);
+           fetchNotifications();
+           if (user.role === 'patient') fetchPatientAppointments();
+        }));
+
+        if (Capacitor.getPlatform() === 'android') {
+           await PushNotifications.createChannel({
+              id: PUSH_CHANNEL_ID,
+              name: 'Booking updates',
+              description: 'Doctor booking, payment, and payout updates',
+              importance: 5,
+              visibility: 1,
+           }).catch(() => undefined);
+        }
+
+        let permission = await PushNotifications.checkPermissions();
+        if (permission.receive === 'prompt') {
+           permission = await PushNotifications.requestPermissions();
+        }
+        if (permission.receive === 'granted') {
+           await PushNotifications.register();
         }
      };
-     load();
-     return () => { active = false; };
-  }, [user, view]);
+
+     setupPushNotifications().catch(() => undefined);
+
+     return () => {
+        active = false;
+        listenerHandles.forEach((handle) => handle.remove());
+     };
+  }, [fetchNotifications, fetchPatientAppointments, showToast, user]);
+
+  useEffect(() => {
+     if (!supabase || !user?.id) return undefined;
+
+     const channel = supabase
+       .channel(`notifications-${user.id}`)
+       .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${user.id}` },
+          (payload) => {
+             const nextNotification = payload.new;
+             if (!nextNotification) return;
+             setNotifications(prev => [nextNotification, ...prev.filter(item => item.id !== nextNotification.id)].slice(0, 40));
+             showToast(nextNotification.title, 'info');
+             notifyDevice(nextNotification.title, nextNotification.body);
+             if (user.role === 'patient') fetchPatientAppointments();
+          }
+       )
+       .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${user.id}` },
+          (payload) => {
+             const updatedNotification = payload.new;
+             if (!updatedNotification) return;
+             setNotifications(prev => prev.map(item => item.id === updatedNotification.id ? updatedNotification : item));
+          }
+       )
+       .subscribe();
+
+     return () => {
+        supabase.removeChannel(channel);
+     };
+  }, [fetchPatientAppointments, showToast, user]);
+
+  const markNotificationRead = useCallback(async (item) => {
+     if (!item || item.read_at) return;
+     const readAt = new Date().toISOString();
+     setNotifications(prev => prev.map(notificationItem => (
+        notificationItem.id === item.id ? { ...notificationItem, read_at: readAt } : notificationItem
+     )));
+     if (!supabase) return;
+     try {
+        const { error } = await supabase
+          .from('notifications')
+          .update({ read_at: readAt })
+          .eq('id', item.id);
+        if (error) throw error;
+     } catch (err) {
+        showToast(friendlyNetworkError(err, 'Unable to update notification.'), 'error');
+        fetchNotifications();
+     }
+  }, [fetchNotifications, showToast]);
+
+  const markAllNotificationsRead = useCallback(async () => {
+     const unreadIds = notifications.filter(item => !item.read_at).map(item => item.id);
+     if (!unreadIds.length) return;
+     const readAt = new Date().toISOString();
+     setNotifications(prev => prev.map(item => item.read_at ? item : { ...item, read_at: readAt }));
+     if (!supabase) return;
+     try {
+        const { error } = await supabase
+          .from('notifications')
+          .update({ read_at: readAt })
+          .in('id', unreadIds);
+        if (error) throw error;
+     } catch (err) {
+        showToast(friendlyNetworkError(err, 'Unable to update notifications.'), 'error');
+        fetchNotifications();
+     }
+  }, [fetchNotifications, notifications, showToast]);
+
+  useEffect(() => {
+     if (user?.id && user.role === 'patient' && view === 'dashboard') {
+        fetchPatientAppointments();
+     }
+  }, [fetchPatientAppointments, user, view]);
 
   const handleLogin = (userData) => {
      setUser(userData);
@@ -2604,12 +2655,12 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-     clearMockSession();
      if (supabase) {
         try {
+           await disableStoredPushDevice(user?.id);
            await supabase.auth.signOut();
         } catch {
-           // Local logout should still succeed if the live backend is offline.
+           // Clear local UI state even if the live sign-out request fails.
         }
      }
      setUser(null);
@@ -2622,22 +2673,14 @@ export default function App() {
      const cleanProfilePatch = Object.fromEntries(
         Object.entries(profilePatch || {}).filter(([, value]) => value !== undefined)
      );
-     const nextProfile = { ...user, ...cleanProfilePatch };
 
-     if (isMockUser(user) || !supabase) {
-        const savedProfile = updateMockAccount(user.id, cleanProfilePatch) || nextProfile;
-        if (doctorPatch && user.doctorId) {
-           const updatedDoctor = updateLocalDoctorProfile(user.doctorId, doctorPatch);
-           if (updatedDoctor) {
-              setDoctors(prev => mergeDoctors([updatedDoctor], getLocalDoctors(), prev, DEFAULT_DOCTORS));
-           }
-        }
-        setUser(savedProfile);
-        showToast('Profile updated.');
-        return savedProfile;
+     if (!supabase) {
+        showToast('Live backend is not configured.', 'error');
+        return null;
      }
 
      try {
+        let updatedProvider = null;
         const { data, error } = await supabase
           .from('users')
           .update(cleanProfilePatch)
@@ -2655,13 +2698,15 @@ export default function App() {
              .single();
            if (doctorError) throw doctorError;
            if (updatedDoctor) {
-              setDoctors(prev => mergeDoctors([updatedDoctor], prev, getLocalDoctors(), DEFAULT_DOCTORS));
+              updatedProvider = updatedDoctor;
+              setDoctors(prev => mergeDoctors([updatedDoctor], prev));
            }
         }
 
         const savedProfile = { ...user, ...data };
         setUser(savedProfile);
-        showToast('Profile updated.');
+        const needsProviderReview = doctorPatch && updatedProvider?.verification_status === 'pending';
+        showToast(needsProviderReview ? 'Profile updated. Admin review is required before patients can book again.' : 'Profile updated.', needsProviderReview ? 'info' : 'success');
         return savedProfile;
      } catch (err) {
         showToast(friendlyNetworkError(err, 'Unable to update profile.'), 'error');
@@ -2671,58 +2716,49 @@ export default function App() {
 
   const initiateBooking = async () => {
      if (!selectedSlot || !selectedDoctor || !user) return;
-     const appt = {
-         patient_id: user.id,
-         doctor_id: selectedDoctor.id,
-         doctor_name: selectedDoctor.name,
-         patient_name: user.name,
-         slot: selectedSlot,
-         appointment_date: selectedDate.toISOString(),
-         status: 'Pending Approval',
-         payment_status: 'Unpaid',
-         amount: displayAmount(selectedDoctor.price)
-     };
-
-     if (isMockUser(user) || !supabase) {
-         saveLocalAppointment(appt);
-         showToast("Booking request sent successfully!", "success");
-         setView('success');
+     if (!supabase) {
+         showToast("Live backend is not configured.", "error");
          return;
      }
 
      try {
-         const { error } = await supabase.from('appointments').insert([appt]);
+         const { error } = await supabase.rpc('create_appointment_request', {
+           p_doctor_id: selectedDoctor.id,
+           p_slot: selectedSlot,
+           p_appointment_date: selectedDate.toISOString(),
+         });
          if (error) throw error;
          showToast("Booking request sent successfully!", "success");
+         dispatchPushNotifications();
          setView('success');
      } catch (err) {
-         saveLocalAppointment(appt);
-         showToast(friendlyNetworkError(err, "Saved locally because live booking is unavailable."), 'info');
-         setView('success');
+         showToast(friendlyNetworkError(err, "Unable to send booking request."), 'error');
      }
   };
 
   const handlePayCash = async (appt) => {
-     const patch = { payment_mode: 'Cash', payment_status: 'Pending Verification' };
-
-     if (isMockUser(user) || !supabase || appt.isMock) {
-         updateLocalAppointment(appt.id, patch);
-         showToast("Selected Cash. Please pay at the clinic.", "info");
-         fetchPatientAppointments();
+     if (!supabase) {
+         showToast("Live backend is not configured.", "error");
          return;
      }
 
      try {
-         const { error } = await supabase.from('appointments').update(patch).eq('id', appt.id);
+         const { error } = await supabase.rpc('submit_appointment_payment', {
+           p_appointment_id: appt.id,
+           p_payment_mode: 'Cash',
+           p_transaction_id: null,
+           p_receiver_upi: 'Cash at clinic',
+         });
          if (error) throw error;
-         showToast("Selected Cash. Please pay at the clinic.", "info");
+         showToast("Cash payment request sent for admin verification.", "info");
+         dispatchPushNotifications();
          fetchPatientAppointments();
      } catch (err) {
          showToast(friendlyNetworkError(err, "Unable to update payment mode."), "error");
      }
   };
 
-  const handlePayNow = async (appt) => {
+  const handleOpenUpi = async (appt) => {
       let doctor = doctors.find((item) => String(item.id) === String(appt.doctor_id));
       if (!doctor && supabase) {
         try {
@@ -2737,37 +2773,68 @@ export default function App() {
         }
       }
       const amount = numericAmount(appt.amount);
-      const upiId = doctor?.upi_id;
+      const receiver = paymentReceiverFor(doctor);
 
-      if (upiId) {
-        const params = new URLSearchParams({
-          pa: upiId,
-          pn: doctor?.name || appt.doctor_name || 'Raphael Doctor',
-          am: amount.toString(),
-          cu: 'INR',
-          tn: `Raphael appointment ${appt.id}`,
-        });
-        window.location.href = `upi://pay?${params.toString()}`;
+      if (!receiver.upi) {
+        showToast('No UPI handle is configured for this payment yet.', 'error');
+        return;
       }
 
-      const patch = { payment_mode: 'UPI', payment_status: 'Pending Verification' };
-      if (isMockUser(user) || !supabase || appt.isMock) {
-        updateLocalAppointment(appt.id, patch);
-        showToast(upiId ? "UPI opened. Payment is pending verification." : "Payment marked for verification.", "info");
-        fetchPatientAppointments();
+      const params = new URLSearchParams({
+        pa: receiver.upi,
+        pn: receiver.name || ADMIN_NAME,
+        am: amount.toString(),
+        cu: 'INR',
+        tn: `Raphael appointment ${appt.id}`,
+      });
+      window.location.href = `upi://pay?${params.toString()}`;
+      showToast(`UPI opened. Submit the UTR after paying ${receiver.type === 'clinic' ? 'the clinic' : 'the doctor'}.`, 'info');
+  };
+
+  const handleSubmitPayment = async (appt, utrValue) => {
+      const utr = cleanUtr(utrValue);
+      if (utr.length < 6) {
+        showToast('Enter a valid UTR or transaction ID after paying.', 'error');
+        return;
+      }
+
+      if (!supabase) {
+        showToast("Live backend is not configured.", "error");
+        return;
+      }
+
+      let doctor = doctors.find((item) => String(item.id) === String(appt.doctor_id));
+      if (!doctor) {
+        try {
+          const { data } = await supabase
+            .from('doctors')
+            .select('name, upi_id')
+            .eq('id', appt.doctor_id)
+            .maybeSingle();
+          doctor = data;
+        } catch {
+          doctor = null;
+        }
+      }
+      const receiver = paymentReceiverFor(doctor);
+      if (!receiver.upi) {
+        showToast('No UPI handle is configured for this payment yet.', 'error');
         return;
       }
 
       try {
-        const { error } = await supabase
-          .from('appointments')
-          .update(patch)
-          .eq('id', appt.id);
+        const { error } = await supabase.rpc('submit_appointment_payment', {
+          p_appointment_id: appt.id,
+          p_payment_mode: 'UPI',
+          p_transaction_id: utr,
+          p_receiver_upi: receiver.upi,
+        });
         if (error) throw error;
-        showToast(upiId ? "UPI opened. Payment is pending verification." : "Payment marked for verification.", "info");
+        showToast("UTR submitted. Admin will verify the payment.", "info");
+        dispatchPushNotifications();
         fetchPatientAppointments();
       } catch (err) {
-        showToast(friendlyNetworkError(err, "Unable to start payment."), "error");
+        showToast(friendlyNetworkError(err, "Unable to submit payment proof."), "error");
       }
   };
 
@@ -2797,16 +2864,16 @@ export default function App() {
 
         <div className="w-full sm:max-w-[430px] bg-white min-h-screen sm:min-h-[calc(100vh-2rem)] sm:my-4 relative app-frame overflow-hidden flex flex-col">
            {view === 'login' && <LoginView onLogin={handleLogin} showToast={showToast} />}
-           {view === 'admin' && <AdminDashboard logout={handleLogout} doctors={doctors} />}
-           {view === 'doctor_dashboard' && <DoctorDashboard user={user} doctor={doctorProfile} logout={handleLogout} showToast={showToast} onSaveProfile={handleSaveProfile} />}
+           {view === 'admin' && <AdminDashboard user={user} logout={handleLogout} doctors={doctors} showToast={showToast} onOpenNotifications={() => setNotificationsOpen(true)} unreadCount={unreadNotificationCount} onDoctorsChanged={fetchDoctors} platformFeePercent={platformFeePercent} onPlatformFeeChanged={setPlatformFeePercent} />}
+           {view === 'doctor_dashboard' && <DoctorDashboard user={user} doctor={doctorProfile} logout={handleLogout} showToast={showToast} onSaveProfile={handleSaveProfile} onOpenNotifications={() => setNotificationsOpen(true)} unreadCount={unreadNotificationCount} />}
            
            {['home', 'search', 'detail', 'dashboard', 'profile', 'success'].includes(view) && user && user.role === 'patient' && (
               <div className="flex-1 flex flex-col h-full overflow-hidden relative">
-                 <div className="flex-1 overflow-y-auto scrollbar-hide">
-                    {view === 'home' && <HomeView setView={setView} setSearchQuery={setSearchQuery} doctors={doctors} setSelectedDoctor={setSelectedDoctor} />}
+                 <div key={view} className="flex-1 overflow-y-auto scrollbar-hide view-panel">
+                    {view === 'home' && <HomeView setView={setView} setSearchQuery={setSearchQuery} doctors={doctors} setSelectedDoctor={setSelectedDoctor} onOpenNotifications={() => setNotificationsOpen(true)} unreadCount={unreadNotificationCount} />}
                     {view === 'search' && <SearchView searchQuery={searchQuery} setSearchQuery={setSearchQuery} doctors={doctors} setView={setView} setSelectedDoctor={setSelectedDoctor} activeCategory={activeCategory} setActiveCategory={setActiveCategory} />}
                     {view === 'detail' && <DoctorDetailView doctor={selectedDoctor} setView={setView} selectedSlot={selectedSlot} setSelectedSlot={setSelectedSlot} selectedDate={selectedDate} handleBook={initiateBooking} />}
-                    {view === 'dashboard' && <DashboardView appointments={appointments} onPayNow={handlePayNow} onPayCash={handlePayCash} />}
+                    {view === 'dashboard' && <DashboardView appointments={appointments} appointmentEvents={appointmentEvents} doctors={doctors} onOpenUpi={handleOpenUpi} onSubmitPayment={handleSubmitPayment} onPayCash={handlePayCash} platformFeePercent={platformFeePercent} />}
                     {view === 'profile' && <ProfileView user={user} logout={handleLogout} onSaveProfile={handleSaveProfile} />}
                     {view === 'success' && (
                        <div className="flex flex-col items-center justify-center text-center p-6 h-full app-screen">
@@ -2828,14 +2895,16 @@ export default function App() {
                            { id: 'home', icon: Zap, label: 'Home' },
                            { id: 'search', icon: Search, label: 'Search' },
                            { id: 'dashboard', icon: Calendar, label: 'Visits' },
-                           { id: 'profile', icon: User, label: 'Profile' }
+                           { id: 'profile', icon: User, label: 'Profile' },
+                           { id: 'alerts', icon: Bell, label: 'Alerts', action: () => setNotificationsOpen(true) }
                          ].map(item => (
-                           <button 
-                             key={item.id} 
-                             onClick={() => setView(item.id)} 
+                           <button
+                             key={item.id}
+                             onClick={() => item.action ? item.action() : setView(item.id)}
                              className={`relative flex flex-col items-center gap-1 w-16 py-2 rounded-lg transition-all duration-300 ${view === item.id ? 'text-white bg-slate-950 shadow-md shadow-slate-900/15' : 'text-slate-500 hover:text-cyan-700 hover:bg-cyan-50'}`}
                            >
                              <item.icon size={22} strokeWidth={view === item.id ? 2.5 : 2} className={view === item.id ? 'animate-in zoom-in-75 duration-200' : ''} />
+                             {item.id === 'alerts' && unreadNotificationCount > 0 && <span className="absolute right-2 top-1 h-4 min-w-4 rounded-full bg-red-500 px-1 text-[9px] font-black leading-4 text-white">{unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}</span>}
                              <span className="text-[9px] font-extrabold uppercase">{item.label}</span>
                            </button>
                          ))}
@@ -2843,6 +2912,15 @@ export default function App() {
                     </div>
                  )}
               </div>
+           )}
+           {user && (
+             <NotificationCenter
+               open={notificationsOpen}
+               notifications={notifications}
+               onClose={() => setNotificationsOpen(false)}
+               onMarkRead={markNotificationRead}
+               onMarkAllRead={markAllNotificationsRead}
+             />
            )}
         </div>
      </div>
