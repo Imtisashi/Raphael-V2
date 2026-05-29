@@ -41,10 +41,16 @@ const SubmitButton = ({ children, loading, ...props }) => (
 const ConfigNotice = ({ hasSupabaseConfig, supabaseConfigStatus }) => {
   const host = supabaseConfigStatus?.host;
   if (hasSupabaseConfig) {
+    const fallbackLabel = supabaseConfigStatus?.ignoredConfiguredHost
+      ? `Using ${host}; ignored old ${supabaseConfigStatus.configuredHost}`
+      : host
+        ? `Connected to ${host}`
+        : 'Live backend connected';
+
     return (
       <div className="mb-5 flex items-center justify-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs font-black text-emerald-700">
         <BadgeCheck size={16} />
-        <span>{host ? `Connected to ${host}` : 'Live backend connected'}</span>
+        <span>{fallbackLabel}</span>
       </div>
     );
   }
