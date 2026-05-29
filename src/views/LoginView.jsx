@@ -30,7 +30,7 @@ const AuthField = ({ icon: Icon, className = '', children, ...props }) => (
 const SubmitButton = ({ children, loading, ...props }) => (
   <button
     type="submit"
-    className="flex h-14 w-full items-center justify-center gap-2 rounded-lg bg-slate-950 px-5 text-base font-black text-white shadow-lg shadow-slate-900/15 transition-all duration-200 hover:bg-slate-800 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+    className="flex h-14 w-full items-center justify-center gap-2 rounded-lg bg-slate-950 px-5 text-base font-black text-white shadow-lg shadow-slate-900/15 transition-all duration-300 ease-out hover:bg-slate-800 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
     disabled={loading}
     {...props}
   >
@@ -39,25 +39,18 @@ const SubmitButton = ({ children, loading, ...props }) => (
 );
 
 const ConfigNotice = ({ hasSupabaseConfig, supabaseConfigStatus }) => {
-  const host = supabaseConfigStatus?.host;
   if (hasSupabaseConfig) {
-    const fallbackLabel = supabaseConfigStatus?.ignoredConfiguredHost
-      ? `Using ${host}; ignored old ${supabaseConfigStatus.configuredHost}`
-      : host
-        ? `Connected to ${host}`
-        : 'Live backend connected';
-
     return (
-      <div className="mb-5 flex items-center justify-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs font-black text-emerald-700">
-        <BadgeCheck size={16} />
-        <span>{fallbackLabel}</span>
+      <div className="mb-4 flex items-center justify-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+        <BadgeCheck size={14} />
+        <span>Live backend connected</span>
       </div>
     );
   }
 
   const missing = supabaseConfigStatus?.missing?.join(', ') || 'Supabase environment variables';
   return (
-    <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold leading-relaxed text-amber-800">
+    <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
       Missing live backend config: {missing}.
     </div>
   );

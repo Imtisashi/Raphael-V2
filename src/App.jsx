@@ -474,17 +474,17 @@ const saveUserProfile = async (authUser, profileInput) => {
 // PREMIUM UI COMPONENTS
 // ==========================================
 const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false }) => {
-  const baseStyle = "px-6 py-3.5 rounded-lg font-bold transition-all duration-200 active:scale-[0.98] flex items-center justify-center gap-2 outline-none focus:ring-4";
+  const baseStyle = "px-6 py-3.5 rounded-lg font-bold transition-all duration-300 ease-out active:scale-[0.99] flex items-center justify-center gap-2 outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
   const variants = {
-    primary: "bg-slate-950 text-white shadow-lg shadow-slate-900/20 hover:bg-slate-800 focus:ring-slate-900/15",
-    accent: "bg-gradient-to-r from-cyan-500 via-sky-500 to-emerald-500 text-white shadow-lg shadow-cyan-500/20 hover:brightness-105 focus:ring-cyan-500/20",
-    secondary: "bg-white text-slate-800 border border-slate-200 shadow-sm hover:border-cyan-200 hover:bg-cyan-50/50 focus:ring-cyan-100",
-    danger: "bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 focus:ring-red-100",
-    ghost: "bg-transparent text-slate-500 hover:text-cyan-700 hover:bg-cyan-50 focus:ring-cyan-50",
-    outline: "bg-transparent border border-slate-200 text-slate-600 hover:border-cyan-500 hover:text-cyan-700 focus:ring-cyan-100"
+    primary: "bg-slate-950 text-white shadow-lg shadow-slate-900/20 hover:bg-slate-800/90 focus-visible:ring-slate-900/50",
+    accent: "bg-gradient-to-r from-cyan-500 via-sky-500 to-emerald-500 text-white shadow-lg shadow-cyan-500/20 hover:brightness-105 focus-visible:ring-cyan-500/50",
+    secondary: "bg-white text-slate-800 border border-slate-200 shadow-sm hover:border-cyan-200/50 hover:bg-cyan-50/60 focus-visible:ring-cyan-200/50",
+    danger: "bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 focus-visible:ring-red-100/50",
+    ghost: "bg-transparent text-slate-500 hover:text-cyan-700/80 hover:bg-cyan-50/50 focus-visible:ring-cyan-50/50",
+    outline: "bg-transparent border border-slate-200 text-slate-600 hover:border-cyan-500/50 hover:text-cyan-700/80 focus-visible:ring-slate-200/50"
   };
   return (
-    <button onClick={onClick} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${disabled ? 'opacity-50 cursor-not-allowed saturate-50' : ''} ${className}`}>
+    <button onClick={onClick} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}>
       {children}
     </button>
   );
@@ -499,7 +499,7 @@ const Badge = ({ children, type = 'info' }) => {
     dark: "bg-slate-950 text-white border border-slate-800"
   };
   return (
-    <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-md text-[10px] font-extrabold uppercase shadow-sm ${styles[type]}`}>
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold ${styles[type]}`}>
       {children}
     </span>
   );
@@ -509,14 +509,14 @@ const Avatar = ({ name, url, size = "md", specialty }) => {
   const sizes = { sm: "w-10 h-10 text-sm", md: "w-14 h-14 text-xl", lg: "w-24 h-24 text-4xl", xl: "w-28 h-28 text-5xl" };
   const initial = name ? name.replace('Dr. ', '').charAt(0).toUpperCase() : 'D';
   const meta = specialtyMeta(specialty);
-  
-  if (url) return <img src={url} alt={name} className={`${sizes[size]} rounded-lg object-cover shadow-md ring-4 ring-white`} />;
-  
+
+  if (url) return <img src={url} alt={name} className={`${sizes[size]} rounded-lg object-cover shadow-md ring-3 ring-white/20`} />;
+
   return (
-    <div className={`${sizes[size]} rounded-lg bg-gradient-to-br ${meta.tone} flex items-center justify-center text-white font-black shadow-lg shadow-slate-900/10 ring-4 ring-white relative overflow-hidden`}>
+    <div className={`${sizes[size]} rounded-lg bg-gradient-to-br ${meta.tone} flex items-center justify-center text-white font-black shadow-lg shadow-slate-900/10 ring-2 ring-white/20 relative overflow-hidden`}>
       <div className="absolute inset-0 pro-avatar-pattern" />
       {initial}
-      <div className="absolute bottom-1 right-1 w-3 h-3 bg-emerald-400 border-2 border-white rounded-full shadow-sm"></div>
+      <div className="absolute bottom-1 right-1 w-3 h-3 bg-emerald-400/80 border-2 border-white/20 rounded-full shadow-sm"></div>
     </div>
   );
 };
