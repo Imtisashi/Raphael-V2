@@ -4,14 +4,15 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { PushNotifications } from '@capacitor/push-notifications';
 import {
   Search, Calendar, Clock, MapPin, Star, Shield, Activity, User, CheckCircle, X,
-  ArrowRight, Loader2, EyeOff, Check, LogOut,
-  ChevronLeft, IndianRupee, Zap, Mail, Lock, Sparkles, ChevronRight,
+  ArrowRight, Loader2, Check, LogOut,
+  ChevronLeft, IndianRupee, Zap, Sparkles, ChevronRight,
   HeartPulse, Stethoscope, Wallet, TrendingUp, Users, ClipboardCheck, Bell,
   PhoneCall, MapPinned, BadgeCheck, Timer, ArrowUpRight, Brain, Bone, Eye,
   Edit3, Save, AlertTriangle, FileText, Copy
 } from 'lucide-react';
-import { hasSupabaseConfig, supabase } from './lib/supabaseClient';
+import { hasSupabaseConfig, supabase, supabaseConfigStatus } from './lib/supabaseClient';
 import { generateAdminReport, generateReceipt } from './utils/pdfGenerator';
+import LoginScreen from './views/LoginView';
 import appIcon from '../icons/icon-128.webp';
 
 const APP_ICON = appIcon;
@@ -310,8 +311,13 @@ const mergeDoctors = (...groups) => {
 
 const friendlyNetworkError = (err, fallback) => {
   const message = err?.message || '';
+  if (!hasSupabaseConfig) {
+    const missing = supabaseConfigStatus.missing.join(', ') || 'Supabase environment variables';
+    return `Live backend is not configured for this deployment. Add ${missing} in Vercel and redeploy.`;
+  }
   if (/failed to fetch|network|fetch/i.test(message)) {
-    return `Could not reach the live server from this deployment. Check the Vercel environment variables, Supabase project status, and browser network access.${message ? ` Details: ${message}` : ''}`;
+    const host = supabaseConfigStatus.host || 'the configured Supabase project';
+    return `Could not reach Supabase (${host}) from this deployment. Check Vercel environment variables, the Supabase project status, and browser network access.${message ? ` Details: ${message}` : ''}`;
   }
   return message || fallback;
 };
@@ -585,298 +591,6 @@ const DoctorCard = ({ doctor, onClick, featured = false }) => {
 // ==========================================
 // VIEWS
 // ==========================================
-
-function LoginView({ onLogin, showToast }) {
-  const [mode, setMode] = useState('login'); 
-  const [email, setEmail] = useState('');
-  const [resetEmail, setResetEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [role, setRole] = useState('patient');
-  const [specialty, setSpecialty] = useState('General Physician');
-  const [price, setPrice] = useState(''); 
-  const [doctorUpi, setDoctorUpi] = useState(''); 
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  const handleLoginSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-    try {
-      if (!supabase) {
-        throw new Error('Live Supabase auth is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to use the app.');
-      }
-
-      const { data, error: loginError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
-      if (loginError) throw loginError;
-
-      const profile = await loadUserProfile(data.user);
-      onLogin(profile);
-    } catch (err) {
-      setError(friendlyNetworkError(err, 'Unable to sign in. Please check your details.'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRegisterSubmit = async (e) => {
-    e?.preventDefault();
-    if (!name.trim() || !email.trim() || !password) {
-      setError('Please fill in your name, email, and password.');
-      return;
-    }
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters.');
-      return;
-    }
-    if (role === 'doctor') {
-      const consultationFee = Number(price);
-      if (!Number.isFinite(consultationFee) || consultationFee <= 0) {
-        setError('Doctors must set a valid consultation fee.');
-        return;
-      }
-      if (!doctorUpi.trim()) {
-        setError('Doctors must provide a UPI ID for payouts.');
-        return;
-      }
-    }
-
-    const normalizedEmail = normalizeEmail(email);
-    const registration = {
-      name: name.trim(),
-      phone: phone.trim(),
-      role,
-      specialty,
-      price,
-      doctorUpi,
-      email: normalizedEmail,
-      password,
-    };
-
-    if (!supabase) {
-      setError('Live Supabase auth is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY before creating accounts.');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-    try {
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email: normalizedEmail,
-        password,
-        options: {
-          data: {
-            name: registration.name,
-            phone: registration.phone,
-            role,
-            district: 'Dimapur',
-            specialty: role === 'doctor' ? specialty : undefined,
-            consultationFee: role === 'doctor' ? Number(price) : undefined,
-            doctorUpi: role === 'doctor' ? doctorUpi.trim() : undefined,
-          },
-          emailRedirectTo: window.location.origin,
-        },
-      });
-      if (signUpError) throw signUpError;
-      if (!data?.user) throw new Error('Live auth did not return a new user.');
-
-      if (!data.session) {
-        if (showToast) showToast('Account created. Verify your email, then sign in.', 'success');
-        setMode('login');
-        return;
-      }
-
-      const currentUser = await saveUserProfile(data.user, {
-        name: registration.name,
-        phone: registration.phone,
-        role,
-        district: 'Dimapur',
-      });
-      if (showToast) showToast(`Welcome to Rapha'l, ${currentUser.name}!`, 'success');
-      onLogin(currentUser);
-    } catch (err) {
-      setError(friendlyNetworkError(err, 'Unable to create account on the live server.'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handlePasswordReset = async (e) => {
-    e.preventDefault();
-    const targetEmail = (resetEmail || email).trim();
-    if (!targetEmail) {
-      setError('Enter your email address first.');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-    try {
-      if (!supabase) {
-        throw new Error('Live Supabase auth is not configured. Password reset requires the live backend.');
-      }
-
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(targetEmail, {
-        redirectTo: window.location.origin,
-      });
-      if (resetError) throw resetError;
-      if (showToast) showToast('Password reset email sent.', 'info');
-      setMode('login');
-    } catch (err) {
-      setError(friendlyNetworkError(err, 'Unable to send reset email.'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="auth-screen min-h-screen w-full max-w-full flex flex-col items-center justify-center px-4 py-5 sm:p-5 relative overflow-x-hidden overflow-y-auto font-sans">
-      <div className="w-[calc(100vw-2rem)] max-w-md pro-auth-card p-5 sm:p-8 z-10 view-panel">
-        <div className="mb-8">
-          <div className="flex min-w-0 items-center justify-between gap-3 mb-7">
-            <div className="flex min-w-0 items-center gap-3">
-              <img src={APP_ICON} alt="Rapha'l" className="w-14 h-14 shrink-0 rounded-lg object-cover shadow-lg shadow-cyan-900/10" />
-              <div className="min-w-0">
-                <h1 className="truncate text-2xl font-black text-slate-950 sm:text-3xl">Rapha'l</h1>
-                <p className="text-xs font-black text-cyan-700 uppercase">Care OS</p>
-              </div>
-            </div>
-            <div className="shrink-0">
-              <Badge type="dark"><Shield size={12} /> Pro</Badge>
-            </div>
-          </div>
-          <div className="pro-hero-strip p-4 text-white">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-cyan-100">Live care workspace</p>
-                <h2 className="text-xl font-black mt-1 leading-tight sm:text-2xl">Sign in to manage real clinic flow.</h2>
-              </div>
-              <div className="shrink-0 rounded-lg bg-white/15 p-2 border border-white/20">
-                <Zap size={20} />
-              </div>
-            </div>
-            <div className="mt-5 grid grid-cols-3 gap-2">
-              <div className="min-w-0 rounded-lg bg-white/12 p-2">
-                <p className="text-[10px] font-bold text-cyan-100">Auth</p>
-                <p className="text-[12px] font-black leading-tight sm:text-sm">{hasSupabaseConfig ? 'Live' : 'Setup'}</p>
-              </div>
-              <div className="min-w-0 rounded-lg bg-white/12 p-2">
-                <p className="text-[10px] font-bold text-cyan-100">Data</p>
-                <p className="text-[12px] font-black leading-tight sm:text-sm">Supabase</p>
-              </div>
-              <div className="min-w-0 rounded-lg bg-white/12 p-2">
-                <p className="text-[10px] font-bold text-cyan-100">Pay</p>
-                <p className="text-[12px] font-black leading-tight sm:text-sm">UPI</p>
-              </div>
-            </div>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <div className="min-w-0 rounded-lg bg-white/12 border border-white/15 p-3 flex items-center gap-2">
-                <Shield size={17} className="shrink-0 text-cyan-100" />
-                <span className="text-xs font-black leading-tight">Real records only</span>
-              </div>
-              <div className="min-w-0 rounded-lg bg-white/12 border border-white/15 p-3 flex items-center gap-2">
-                <AlertTriangle size={17} className="shrink-0 text-amber-100" />
-                <span className="text-xs font-black leading-tight">Manual checks</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {mode === 'login' ? (
-          <form onSubmit={handleLoginSubmit} className="space-y-5">
-            <div className="space-y-4">
-              <div className="group relative">
-                  <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none transition-colors group-focus-within:text-cyan-500 text-slate-400"><Mail size={18} /></div>
-                  <input type="email" placeholder="Email Address" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-5 py-4 text-slate-900 placeholder-slate-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 outline-none transition-all" required />
-              </div>
-              <div className="group relative">
-                  <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none transition-colors group-focus-within:text-cyan-500 text-slate-400"><Lock size={18} /></div>
-                  <input type={showPassword ? "text" : "password"} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-12 py-4 text-slate-900 placeholder-slate-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 outline-none transition-all" required />
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-5 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-cyan-600 transition-colors"><EyeOff size={18} /></button>
-              </div>
-            </div>
-            {error && <div className="bg-red-50 border border-red-100 text-red-600 text-xs font-semibold text-center py-3 rounded-xl">{error}</div>}
-            
-            <div className="pt-2">
-              <Button className="w-full py-4 text-lg" disabled={loading}>
-                  {loading ? <Loader2 className="animate-spin" /> : "Sign In"}
-              </Button>
-            </div>
-            
-            <button type="button" onClick={() => setMode('forgot')} className="w-full text-center text-cyan-700 text-sm hover:text-cyan-900 transition-colors font-bold">
-                Forgot password?
-            </button>
-            <button type="button" onClick={() => setMode('register')} className="w-full text-center mt-4 text-slate-500 text-sm hover:text-cyan-700 transition-colors flex items-center justify-center gap-2 group font-medium">
-                Create new account <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
-            </button>
-          </form>
-        ) : mode === 'forgot' ? (
-          <form onSubmit={handlePasswordReset} className="space-y-5">
-            <div className="space-y-2 text-center">
-              <h2 className="text-xl font-black text-slate-900">Reset your password</h2>
-              <p className="text-sm font-medium text-slate-500">We will send a secure reset link to your email.</p>
-            </div>
-            <div className="group relative">
-              <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none transition-colors group-focus-within:text-cyan-500 text-slate-400"><Mail size={18} /></div>
-              <input type="email" placeholder="Email Address" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-5 py-4 text-slate-900 placeholder-slate-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 outline-none transition-all" required />
-            </div>
-            {error && <div className="bg-red-50 border border-red-100 text-red-600 text-xs font-semibold text-center py-3 rounded-xl">{error}</div>}
-            <Button className="w-full py-4 text-lg" disabled={loading}>
-              {loading ? <Loader2 className="animate-spin" /> : "Send Reset Link"}
-            </Button>
-            <button type="button" onClick={() => setMode('login')} className="w-full text-center pt-2 text-slate-500 text-sm hover:text-cyan-700 transition-colors">
-              Back to sign in
-            </button>
-          </form>
-        ) : (
-           <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <p className="text-xs font-bold text-slate-500">
-                  Accounts are created on the live Supabase backend. Configure Supabase environment variables before launching.
-                </p>
-              </div>
-              <div className="flex p-1 bg-slate-100 rounded-2xl border border-slate-200">
-                {['patient', 'doctor'].map(r => (
-                  <button key={r} onClick={() => setRole(r)} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-300 ${role === r ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/20' : 'text-slate-500 hover:text-cyan-700'}`}>{r}</button>
-                ))}
-              </div>
-              
-              <input type="text" placeholder="Full Name" value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-slate-900 placeholder-slate-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 outline-none transition-all" />
-              <input type="tel" placeholder="Phone Number" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-slate-900 placeholder-slate-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 outline-none transition-all" />
-              
-              {role === 'doctor' && (
-                <div className="space-y-4 p-5 bg-cyan-50 rounded-2xl border border-cyan-100">
-                  <select value={specialty} onChange={(e) => setSpecialty(e.target.value)} className="w-full bg-white border border-cyan-100 rounded-xl px-4 py-3 text-slate-900 outline-none appearance-none focus:ring-4 focus:ring-cyan-100">
-                    {Object.values(SYMPTOM_MAP).filter((v,i,a)=>a.indexOf(v)===i).map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                  <input type="number" placeholder="Consultation Fee (Rs.)" value={price} onChange={(e) => setPrice(e.target.value)} className="w-full bg-white border border-cyan-100 rounded-xl px-4 py-3 text-slate-900 outline-none focus:ring-4 focus:ring-cyan-100" />
-                  <input type="text" placeholder="Your UPI ID" value={doctorUpi} onChange={(e) => setDoctorUpi(e.target.value)} className="w-full bg-white border border-cyan-100 rounded-xl px-4 py-3 text-slate-900 outline-none focus:ring-4 focus:ring-cyan-100" />
-                </div>
-              )}
-              
-              <input type="email" placeholder="Email Address" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-slate-900 placeholder-slate-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 outline-none transition-all" />
-              <input type="password" placeholder="Create Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-slate-900 placeholder-slate-400 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100 outline-none transition-all" />
-              
-              {error && <p className="text-red-600 text-xs font-semibold text-center bg-red-50 py-3 rounded-xl border border-red-100">{error}</p>}
-              
-              <Button onClick={handleRegisterSubmit} className="w-full py-4 text-lg mt-2" disabled={loading}>
-                 {loading ? <Loader2 className="animate-spin" /> : "Create Account"}
-              </Button>
-              <button type="button" onClick={() => setMode('login')} className="w-full text-center pt-4 pb-2 text-slate-500 text-sm hover:text-cyan-700 transition-colors">
-                 Already have an account? Sign In
-              </button>
-           </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor, onOpenNotifications, unreadCount = 0 }) {
   const [symptomInput, setSymptomInput] = useState('');
@@ -2863,7 +2577,21 @@ export default function App() {
         )}
 
         <div className="w-full sm:max-w-[430px] bg-white min-h-screen sm:min-h-[calc(100vh-2rem)] sm:my-4 relative app-frame overflow-hidden flex flex-col">
-           {view === 'login' && <LoginView onLogin={handleLogin} showToast={showToast} />}
+           {view === 'login' && (
+             <LoginScreen
+               onLogin={handleLogin}
+               showToast={showToast}
+               supabase={supabase}
+               hasSupabaseConfig={hasSupabaseConfig}
+               supabaseConfigStatus={supabaseConfigStatus}
+               loadUserProfile={loadUserProfile}
+               saveUserProfile={saveUserProfile}
+               normalizeEmail={normalizeEmail}
+               friendlyNetworkError={friendlyNetworkError}
+               specialtyOptions={uniqueSpecialties()}
+               appIcon={APP_ICON}
+             />
+           )}
            {view === 'admin' && <AdminDashboard user={user} logout={handleLogout} doctors={doctors} showToast={showToast} onOpenNotifications={() => setNotificationsOpen(true)} unreadCount={unreadNotificationCount} onDoctorsChanged={fetchDoctors} platformFeePercent={platformFeePercent} onPlatformFeeChanged={setPlatformFeePercent} />}
            {view === 'doctor_dashboard' && <DoctorDashboard user={user} doctor={doctorProfile} logout={handleLogout} showToast={showToast} onSaveProfile={handleSaveProfile} onOpenNotifications={() => setNotificationsOpen(true)} unreadCount={unreadNotificationCount} />}
            
