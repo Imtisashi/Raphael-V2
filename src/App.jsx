@@ -13,6 +13,13 @@ import {
 import { hasSupabaseConfig, supabase, supabaseConfigStatus } from './lib/supabaseClient';
 import { generateAdminReport, generateReceipt } from './utils/pdfGenerator';
 import LoginScreen from './views/LoginView';
+import HomeView from './views/HomeView';
+import SearchView from './views/SearchView';
+import DoctorDetailView from './views/DoctorDetailView';
+import DashboardView from './views/DashboardView';
+import ProfileView from './views/ProfileView';
+import DoctorDashboard from './views/DoctorDashboardView';
+import AdminDashboard from './views/AdminDashboardView';
 import appIcon from '../icons/icon-128.webp';
 
 const APP_ICON = appIcon;
