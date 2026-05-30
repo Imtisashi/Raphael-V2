@@ -2,7 +2,8 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
   if (!doctor) return null;
   const meta = specialtyMeta(doctor.specialty);
   const Icon = meta.icon;
-  const slots = normalizeSlots(doctor.slots);
+  const dateStr = selectedDate ? formatDate(selectedDate) : '';
+  const slots = dateStr ? getSlotsForDate(doctor.slots, dateStr) : [];
   const hasFee = numericAmount(doctor.price) > 0;
   const approved = isProviderApproved(doctor);
 
