@@ -474,14 +474,14 @@ const saveUserProfile = async (authUser, profileInput) => {
 // PREMIUM UI COMPONENTS
 // ==========================================
 const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false }) => {
-  const baseStyle = "px-6 py-3.5 rounded-lg font-bold transition-all duration-300 ease-out active:scale-[0.99] flex items-center justify-center gap-2 outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
+  const baseStyle = "px-6 py-3.5 rounded-lg font-bold transition-all duration-300 ease-out active:scale-[0.99] flex items-center justify-center gap-2 outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-4";
   const variants = {
-    primary: "bg-slate-950 text-white shadow-lg shadow-slate-900/20 hover:bg-slate-800/90 focus-visible:ring-slate-900/50",
-    accent: "bg-gradient-to-r from-cyan-500 via-sky-500 to-emerald-500 text-white shadow-lg shadow-cyan-500/20 hover:brightness-105 focus-visible:ring-cyan-500/50",
-    secondary: "bg-white text-slate-800 border border-slate-200 shadow-sm hover:border-cyan-200/50 hover:bg-cyan-50/60 focus-visible:ring-cyan-200/50",
-    danger: "bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 focus-visible:ring-red-100/50",
-    ghost: "bg-transparent text-slate-500 hover:text-cyan-700/80 hover:bg-cyan-50/50 focus-visible:ring-cyan-50/50",
-    outline: "bg-transparent border border-slate-200 text-slate-600 hover:border-cyan-500/50 hover:text-cyan-700/80 focus-visible:ring-slate-200/50"
+    primary: "bg-slate-950 text-white shadow-lg shadow-slate-900/20 hover:bg-slate-800/90 focus-visible:ring-slate-900/50 focus-visible:ring-offset-slate-900/50",
+    accent: "bg-gradient-to-r from-cyan-500 via-sky-500 to-emerald-500 text-white shadow-lg shadow-[0_4px_6px_-1px_rgba(16,185,129,0.3),0_2px_4px_-2px_rgba(16,185,129,0.2)] hover:brightness-105 focus-visible:ring-cyan-500/50 focus-visible:ring-offset-cyan-500/50",
+    secondary: "bg-white text-slate-800 border border-slate-200 shadow-sm hover:border-cyan-200/50 hover:bg-cyan-50/60 focus-visible:ring-cyan-200/50 focus-visible:ring-offset-cyan-200/50",
+    danger: "bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 focus-visible:ring-red-100/50 focus-visible:ring-offset-red-100/50",
+    ghost: "bg-transparent text-slate-500 hover:text-cyan-700/80 hover:bg-cyan-50/50 focus-visible:ring-cyan-50/50 focus-visible:ring-offset-cyan-50/50",
+    outline: "bg-transparent border border-slate-200 text-slate-600 hover:border-cyan-500/50 hover:text-cyan-700/80 focus-visible:ring-slate-200/50 focus-visible:ring-offset-slate-200/50"
   };
   return (
     <button onClick={onClick} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}>
@@ -553,7 +553,7 @@ const DoctorCard = ({ doctor, onClick, featured = false }) => {
     <button
       type="button"
       onClick={onClick}
-      className={`group pro-card w-full text-left ${featured ? 'p-5' : 'p-4'} hover:-translate-y-1 hover:shadow-xl hover:shadow-cyan-500/10`}
+      className={`group pro-card w-full text-left ${featured ? 'p-6' : 'p-4'} hover:-translate-y-[3px] hover:shadow-xl hover:shadow-cyan-500/15 transition-all duration-300`}
     >
       <div className="flex items-start gap-4">
         <Avatar name={doctor.name} url={doctor.image} specialty={doctor.specialty} size={featured ? 'lg' : 'md'} />
@@ -568,25 +568,25 @@ const DoctorCard = ({ doctor, onClick, featured = false }) => {
             </div>
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] font-bold">
-            <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-amber-700 border border-amber-100">
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-[11px] font-bold">
+            <span className="inline-flex items-center gap-2 rounded-md bg-amber-50 px-3 py-1 text-amber-700 border border-amber-100">
               <Star size={12} className="fill-amber-400 text-amber-400" /> {ratingLabel(doctor.rating)}
             </span>
-            <span className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-2 py-1 text-slate-600 border border-slate-100">
+            <span className="inline-flex items-center gap-2 rounded-md bg-slate-50 px-3 py-1 text-slate-600 border border-slate-100">
               <MapPin size={12} /> {doctor.district || 'Nagaland'}
             </span>
-            <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 ${meta.soft}`}>
+            <span className={`inline-flex items-center gap-2 rounded-md border px-3 py-1 ${meta.soft}`}>
               {React.createElement(Icon, { size: 12 })} {meta.label}
             </span>
           </div>
 
-          <div className="mt-4 flex items-center justify-between rounded-lg bg-slate-50 border border-slate-100 px-3 py-2">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
+          <div className="mt-5 flex items-center justify-between rounded-lg bg-slate-50 border border-slate-100 px-4 py-3">
+            <div className="flex items-center gap-3 text-xs font-bold text-slate-600">
               <Timer size={14} className="text-emerald-600" />
               <span>{nextSlotFor(doctor)}</span>
             </div>
-            <span className="inline-flex items-center gap-1 text-xs font-black text-cyan-700">
-              Book <ArrowUpRight size={13} className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+            <span className="inline-flex items-center gap-2 text-xs font-black text-cyan-700">
+              Book <ArrowUpRight size={14} className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
             </span>
           </div>
         </div>
