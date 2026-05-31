@@ -14,7 +14,7 @@
     "@capacitor/core": "^8.3.0",
     "@capacitor/local-notifications": "^8.2.0",
     "@capacitor/push-notifications": "^8.1.1",
-    "@supabase/supabase-js": "^2.94.0",
+    "@supabase/supabase-js": "^2.106.2",
     "canvas-confetti": "^1.9.4",
     "jspdf": "^4.1.0",
     "jspdf-autotable": "^5.0.7",
@@ -40,5 +40,18 @@
   },
   "overrides": {
     "vite": "npm:rolldown-vite@7.2.5"
-  }
+  },
+  "description": "Raphael is a React, Vite, Supabase, and Capacitor healthcare booking app for patients, doctors, and clinic administrators.",
+  "main": "eslint.config.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Imtisashi/Raphael-V2.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Imtisashi/Raphael-V2/issues"
+  },
+  "homepage": "https://github.com/Imtisashi/Raphael-V2#readme"
 }

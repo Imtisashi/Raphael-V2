@@ -40,6 +40,11 @@ const SubmitButton = ({ children, loading, ...props }) => (
 
 const ConfigNotice = ({ hasSupabaseConfig, supabaseConfigStatus }) => {
   if (hasSupabaseConfig) {
+    // If we had to ignore a configured host, don't show the banner
+    if (supabaseConfigStatus.ignoredConfiguredHost) {
+      return null;
+    }
+
     return (
       <div className="mb-4 flex items-center justify-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
         <BadgeCheck size={14} />
@@ -82,9 +87,6 @@ export default function LoginView({
   const [doctorUpi, setDoctorUpi] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [otp, setOtp] = useState('');
-  const [showOtpVerify, setShowOtpVerify] = useState(false);
-  const [pendingUser, setPendingUser] = useState(null);
 
   const handleLoginSubmit = async (event) => {
     event.preventDefault();
@@ -173,14 +175,9 @@ export default function LoginView({
       if (signUpError) throw signUpError;
       if (!data?.user) throw new Error('Live auth did not return a new user.');
 
-      // Instead of waiting for email verification, use mock OTP
       if (!data.session) {
-        // Generate a mock 6-digit OTP
-        const mockOtp = Math.floor(100000 + Math.random() * 900000).toString();
-        setPendingUser(data.user);
-        setOtp('');
-        setShowOtpVerify(true);
-        showToast?.(`Account created! Mock OTP sent to ${normalizedEmail}: ${mockOtp} (for testing)`, 'info');
+        showToast?.(`Account created. Check ${normalizedEmail} to verify your email, then log in.`, 'info');
+        setMode('login');
         return;
       }
 
@@ -227,54 +224,10 @@ export default function LoginView({
     }
   };
 
-  const handleOtpVerify = async (event) => {
-    event.preventDefault();
-    setLoading(true);
-    setError('');
-
-    try {
-      if (!pendingUser) {
-        throw new Error('No pending user found');
-      }
-
-      // For mock OTP, we'll accept any 6-digit number
-      // In production, this would verify against the actual OTP sent
-      if (otp.length !== 6 || !/^\d+$/.test(otp)) {
-        setError('Please enter a valid 6-digit OTP');
-        return;
-      }
-
-      // Mock verification successful
-      const currentUser = await saveUserProfile(pendingUser, {
-        name: pendingUser.user_metadata?.name || pendingUser.email?.split('@')[0] || 'Patient',
-        phone: pendingUser.user_metadata?.phone || '',
-        district: pendingUser.user_metadata?.district || 'Dimapur',
-        role: pendingUser.user_metadata?.role || 'patient',
-      });
-
-      showToast?.(`Welcome to Rapha'l, ${currentUser.name}!`, 'success');
-      setShowOtpVerify(false);
-      setPendingUser(null);
-      setOtp('');
-      onLogin(currentUser);
-    } catch (err) {
-      setError(friendlyNetworkError(err, 'Unable to verify account.'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const switchMode = (nextMode) => {
     setError('');
     setMode(nextMode);
     if (nextMode === 'forgot' && email && !resetEmail) setResetEmail(email);
-
-    // Reset OTP state when switching modes
-    if (nextMode !== 'otp_verify') {
-      setShowOtpVerify(false);
-      setPendingUser(null);
-      setOtp('');
-    }
   };
 
   return (
@@ -500,39 +453,6 @@ export default function LoginView({
             </form>
           )}
 
-          {showOtpVerify && (
-            <form key="otp_verify" onSubmit={handleOtpVerify} className="auth-mode-panel space-y-4">
-              <div className="mb-5 text-center">
-                <h2 className="text-2xl font-black text-slate-950">Verify Account</h2>
-                <p className="text-sm font-semibold text-slate-500">
-                  Enter the 6-digit OTP sent to your email
-                </p>
-              </div>
-
-              <AuthField
-                icon={Mail}
-                type="text"
-                autoComplete="otp"
-                placeholder="Enter 6-digit OTP"
-                value={otp}
-                onChange={(event) => setOtp(event.target.value)}
-                maxLength="6"
-                required
-              />
-
-              {error && <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-center text-xs font-bold leading-relaxed text-red-700">{error}</div>}
-
-              <SubmitButton loading={loading}>Verify OTP</SubmitButton>
-
-              <button
-                type="button"
-                onClick={() => switchMode('login')}
-                className="h-11 w-full rounded-lg text-sm font-black text-slate-500 transition-colors hover:bg-slate-50 hover:text-cyan-700"
-              >
-                Back to login
-              </button>
-            </form>
-          )}
         </section>
       </div>
     </div>

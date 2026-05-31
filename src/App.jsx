@@ -4,7 +4,7 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { PushNotifications } from '@capacitor/push-notifications';
 import {
   Search, Calendar, Clock, MapPin, Star, Shield, Activity, User, CheckCircle, X,
-  ArrowRight, Loader2, Check, LogOut,
+  ArrowRight, Loader2, Check, LogOut, Menu, Plus, Trash2,
   ChevronLeft, IndianRupee, Zap, Sparkles, ChevronRight,
   HeartPulse, Stethoscope, Wallet, TrendingUp, Users, ClipboardCheck, Bell,
   PhoneCall, MapPinned, BadgeCheck, Timer, ArrowUpRight, Brain, Bone, Eye,
@@ -13,13 +13,6 @@ import {
 import { hasSupabaseConfig, supabase, supabaseConfigStatus } from './lib/supabaseClient';
 import { generateAdminReport, generateReceipt } from './utils/pdfGenerator';
 import LoginScreen from './views/LoginView';
-import HomeView from './views/HomeView';
-import SearchView from './views/SearchView';
-import DoctorDetailView from './views/DoctorDetailView';
-import DashboardView from './views/DashboardView';
-import ProfileView from './views/ProfileView';
-import DoctorDashboard from './views/DoctorDashboardView';
-import AdminDashboard from './views/AdminDashboardView';
 import appIcon from '../icons/icon-128.webp';
 
 const APP_ICON = appIcon;
@@ -97,16 +90,36 @@ const numericAmount = (value) => {
   return Number.isFinite(amount) && amount > 0 ? amount : 0;
 };
 
-// Date utility functions for calendar
-const isSameDay = (date1, date2) => {
-  return date1.getFullYear() === date2.getFullYear() &&
-         date1.getMonth() === date2.getMonth() &&
-         date1.getDate() === date2.getDate();
+const parseDateOnly = (value) => {
+  if (value instanceof Date) {
+    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  }
+
+  const raw = String(value || '').trim();
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  }
+
+  const fallback = raw ? new Date(raw) : new Date();
+  if (Number.isNaN(fallback.getTime())) {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  }
+  return new Date(fallback.getFullYear(), fallback.getMonth(), fallback.getDate());
 };
 
-const formatDate = (date) => {
-  return date.toISOString().split('T')[0];
+const formatDate = (value) => {
+  const date = parseDateOnly(value);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
+
+const isSameDay = (date1, date2) => formatDate(date1) === formatDate(date2);
+
+const isPastDate = (value) => parseDateOnly(value).getTime() < parseDateOnly(new Date()).getTime();
 
 const addMonths = (date, months) => {
   const result = new Date(date);
@@ -128,9 +141,6 @@ const generateMonthDays = (date) => {
   const firstDay = new Date(year, month, 1);
   // Last day of the month
   const lastDay = new Date(year, month + 1, 0);
-
-  // Days in previous month to fill the calendar grid
-  const prevMonthDays = new Date(year, month, 0).getDate();
 
   // Day of week for first day of month (0 = Sunday, 1 = Monday, etc.)
   const firstDayIndex = firstDay.getDay();
@@ -156,58 +166,72 @@ const generateMonthDays = (date) => {
   return days;
 };
 
-// Slot data handling functions for date-specific scheduling
-const parseSlots = (slotsString) => {
-  if (!slotsString) return {};
+const normalizeSlotValue = (slot) => String(slot || '').trim();
+const normalizeSlots = (value) => (
+  Array.isArray(value)
+    ? value.map(normalizeSlotValue).filter(Boolean)
+    : String(value || '').split(',').map(normalizeSlotValue).filter(Boolean)
+);
 
-  // Try to parse as JSON first
-  try {
-    const parsed = JSON.parse(slotsString);
-    if (typeof parsed === 'object' && parsed !== null) {
-      return parsed;
-    }
-  } catch (e) {
-    // Not JSON, treat as legacy format
-  }
+const uniqueSlots = (slots = []) => Array.from(new Set(normalizeSlots(slots)));
 
-  // Legacy format: comma-separated times (apply to all dates)
-  const times = slotsString
-    .split(',')
-    .map(time => time.trim())
-    .filter(Boolean);
+const normalizeWorkingDates = (rows = []) => (
+  (Array.isArray(rows) ? rows : [])
+    .filter(row => row?.work_date && row?.is_available !== false)
+    .map(row => ({
+      ...row,
+      work_date: formatDate(row.work_date),
+      slots: uniqueSlots(row.slots),
+    }))
+    .filter(row => row.slots.length > 0)
+    .sort((a, b) => a.work_date.localeCompare(b.work_date))
+);
 
-  // Return object with a special key for legacy format
-  return { __legacy: times };
+const decorateDoctor = (doctor, workingDates = null) => {
+  if (!doctor) return doctor;
+  const inheritedDates = doctor.workingDates || doctor.working_dates || doctor.doctor_working_dates || [];
+  const normalizedDates = normalizeWorkingDates(workingDates || inheritedDates);
+  const workingDateMap = normalizedDates.reduce((map, row) => {
+    map[row.work_date] = row;
+    return map;
+  }, {});
+  return {
+    ...doctor,
+    workingDates: normalizedDates,
+    workingDateMap,
+  };
 };
 
-// Serialize slots for storage
-const serializeSlots = (slotsObject) => {
-  // If it's legacy format (__legacy key exists), return as CSV
-  if (slotsObject.__legacy) {
-    return slotsObject.__legacy.join(', ');
-  }
-
-  // Otherwise return JSON
-  return JSON.stringify(slotsObject);
+const mergeDoctors = (...groups) => {
+  const byId = new Map();
+  groups.flat().forEach((doctor) => {
+    if (!doctor?.id) return;
+    const key = String(doctor.id);
+    const previous = byId.get(key);
+    const preferredWorkingDates = doctor.workingDates || doctor.working_dates || doctor.doctor_working_dates;
+    byId.set(key, decorateDoctor({
+      ...(previous || {}),
+      ...doctor,
+      workingDates: preferredWorkingDates?.length ? preferredWorkingDates : previous?.workingDates,
+    }));
+  });
+  return Array.from(byId.values());
 };
 
-// Get slots for a specific date
-const getSlotsForDate = (slotsObject, dateString) => {
-  const slots = parseSlots(typeof slotsObject === 'string' ? slotsObject : serializeSlots(slotsObject));
-
-  // Return date-specific slots if available, otherwise fall back to legacy
-  return slots[dateString] || slots.__legacy || [];
+const doctorWorkingDates = (doctor) => normalizeWorkingDates(doctor?.workingDates || []);
+const slotsForDoctorDate = (doctor, value) => {
+  const dateKey = formatDate(value);
+  return uniqueSlots(doctor?.workingDateMap?.[dateKey]?.slots || []);
 };
-
-// Format date to YYYY-MM-DD string
-const formatDate = (date) => {
-  return date.toISOString().split('T')[0];
+const nextAvailabilityForDoctor = (doctor, from = new Date()) => {
+  const today = formatDate(from);
+  return doctorWorkingDates(doctor).find(row => row.work_date >= today && row.slots.length > 0) || null;
 };
-
-// Parse date string to Date object
-const parseDate = (dateString) => {
-  return new Date(dateString);
+const nextBookableDateForDoctor = (doctor) => {
+  const nextAvailability = nextAvailabilityForDoctor(doctor);
+  return nextAvailability ? parseDateOnly(nextAvailability.work_date) : null;
 };
+const doctorCanBookDate = (doctor, value) => slotsForDoctorDate(doctor, value).length > 0;
 
 const displayAmount = (value) => {
   const amount = numericAmount(value);
@@ -221,14 +245,13 @@ const specialtyForInput = (value) => {
   return keyword ? SYMPTOM_MAP[keyword] : null;
 };
 const specialtyMeta = (specialty) => SPECIALTY_META[specialty] || FALLBACK_SPECIALTY_META;
-const nextSlotFor = (doctor) => normalizeSlots(doctor?.slots)[0] || 'No slots';
+const nextSlotFor = (doctor) => {
+  const nextAvailability = nextAvailabilityForDoctor(doctor);
+  if (!nextAvailability) return 'No dates';
+  return `${shortDate(nextAvailability.work_date)} · ${nextAvailability.slots[0]}`;
+};
 const ratingLabel = (rating) => Number(rating || 5).toFixed(1).replace('.0', '');
-const shortDate = (value) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-const normalizeSlots = (value) => (
-  Array.isArray(value)
-    ? value
-    : String(value || '').split(',').map(slot => slot.trim()).filter(Boolean)
-);
+const shortDate = (value) => parseDateOnly(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 const doctorDisplayName = (name) => (String(name || '').startsWith('Dr.') ? name : `Dr. ${name || 'Provider'}`);
 const cleanUtr = (value) => String(value || '').replace(/\s+/g, '').toUpperCase();
 const isPaymentSubmitted = (appointment) => ['Payment Submitted', 'Pending Verification'].includes(appointment?.payment_status);
@@ -313,11 +336,8 @@ const notifyDevice = async (title, body) => {
     // Fall through to Web Notification when the native plugin is not available.
   }
 
-  if ('Notification' in window) {
-    const permission = Notification.permission === 'granted'
-      ? 'granted'
-      : await Notification.requestPermission().catch(() => 'denied');
-    if (permission === 'granted') new Notification(title, { body });
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification(title, { body, icon: APP_ICON });
   }
 };
 
@@ -419,15 +439,6 @@ const disableStoredPushDevice = async (userId) => {
 const USER_PROFILE_FIELDS = 'id, email, name, role, phone, district, address, blood_group, allergies, doctorId';
 const normalizeEmail = (value) => value.trim().toLowerCase();
 
-const mergeDoctors = (...groups) => {
-  const seen = new Set();
-  return groups.flat().filter((doctor) => {
-    if (!doctor?.id || seen.has(String(doctor.id))) return false;
-    seen.add(String(doctor.id));
-    return true;
-  });
-};
-
 const friendlyNetworkError = (err, fallback) => {
   const message = err?.message || '';
   if (!hasSupabaseConfig) {
@@ -510,7 +521,7 @@ const ensureDoctorProfile = async (authUser, profile) => {
       experience: '1 Year',
       bio: 'New specialist at Rapha\'l.',
       price: displayAmount(metadata.consultationFee),
-      slots: ['09:00 AM', '10:00 AM', '02:00 PM'],
+      slots: [],
       upi_id: metadata.doctorUpi || '',
       owner_id: authUser.id,
     }])
@@ -711,7 +722,7 @@ const DoctorCard = ({ doctor, onClick, featured = false }) => {
 // VIEWS
 // ==========================================
 
-function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor, onOpenNotifications, unreadCount = 0 }) {
+function HomeView({ setView, setSearchQuery, doctors, onSelectDoctor, onOpenNotifications, unreadCount = 0 }) {
   const [symptomInput, setSymptomInput] = useState('');
   const [routing, setRouting] = useState(false);
   const featuredDoctors = doctors.slice(0, 3);
@@ -840,7 +851,7 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor, onOpenN
                 key={doctor.id}
                 doctor={doctor}
                 featured={index === 0}
-                onClick={() => { setSelectedDoctor(doctor); setView('detail'); }}
+                onClick={() => onSelectDoctor(doctor)}
               />
             ))}
             {featuredDoctors.length === 0 && (
@@ -857,7 +868,7 @@ function HomeView({ setView, setSearchQuery, doctors, setSelectedDoctor, onOpenN
   );
 }
 
-function SearchView({ searchQuery, setSearchQuery, doctors, setView, setSelectedDoctor, activeCategory, setActiveCategory }) {
+function SearchView({ searchQuery, setSearchQuery, doctors, setView, onSelectDoctor, activeCategory, setActiveCategory }) {
   const filteredDoctors = useMemo(() => {
     let results = doctors;
     if (activeCategory && activeCategory !== 'All') results = results.filter(d => d.specialty === activeCategory);
@@ -896,21 +907,26 @@ function SearchView({ searchQuery, setSearchQuery, doctors, setView, setSelected
            </div>
         )}
         {filteredDoctors.map(doctor => (
-          <DoctorCard key={doctor.id} doctor={doctor} onClick={() => { setSelectedDoctor(doctor); setView('detail'); }} />
+          <DoctorCard key={doctor.id} doctor={doctor} onClick={() => onSelectDoctor(doctor)} />
         ))}
       </div>
     </div>
   );
 }
 
-function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, selectedDate, handleBook }) {
+function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, selectedDate, setSelectedDate, handleBook }) {
+  const [calendarMonth, setCalendarMonth] = useState(() => selectedDate || new Date());
+  const availableDates = useMemo(() => doctorWorkingDates(doctor), [doctor]);
+  const availableCount = availableDates.length;
+
   if (!doctor) return null;
   const meta = specialtyMeta(doctor.specialty);
   const Icon = meta.icon;
   const dateStr = selectedDate ? formatDate(selectedDate) : '';
-  const slots = dateStr ? getSlotsForDate(doctor.slots, dateStr) : [];
+  const slots = dateStr ? slotsForDoctorDate(doctor, dateStr) : [];
   const hasFee = numericAmount(doctor.price) > 0;
   const approved = isProviderApproved(doctor);
+  const selectedDateIsOpen = dateStr && doctorCanBookDate(doctor, dateStr);
 
   return (
     <div className="h-full flex flex-col app-screen">
@@ -939,7 +955,7 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
           </div>
           <div className="rounded-lg bg-white/15 border border-white/15 p-3">
             <p className="text-[10px] font-bold text-cyan-50">Next</p>
-            <p className="text-lg font-black">{nextSlotFor(doctor).replace(' AM', '').replace(' PM', '')}</p>
+            <p className="text-lg font-black">{nextAvailabilityForDoctor(doctor)?.work_date ? shortDate(nextAvailabilityForDoctor(doctor).work_date) : 'None'}</p>
           </div>
         </div>
       </div>
@@ -961,7 +977,72 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
         </div>
 
         <div className="pro-card p-5 space-y-4">
-          <SectionHeader eyebrow={shortDate(selectedDate)} title="Choose a time" />
+          <div className="flex items-start justify-between gap-3">
+            <SectionHeader eyebrow={`${availableCount} working dates`} title="Choose a date" />
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                aria-label="Previous month"
+                onClick={() => setCalendarMonth(prev => subtractMonths(prev, 1))}
+                className="pro-icon-button h-9 w-9"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                type="button"
+                aria-label="Next month"
+                onClick={() => setCalendarMonth(prev => addMonths(prev, 1))}
+                className="pro-icon-button h-9 w-9"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+            <p className="text-sm font-black text-slate-900">
+              {calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+            </p>
+            <p className="text-[11px] font-black uppercase text-emerald-700">Green dates are open</p>
+          </div>
+          <div className="calendar-weekdays">
+            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+              <span key={`${day}-${index}`}>{day}</span>
+            ))}
+          </div>
+          <div className="calendar-grid patient-calendar">
+            {generateMonthDays(calendarMonth).map((day, index) => {
+              const dateKey = formatDate(day);
+              const isCurrentMonth = day.getMonth() === calendarMonth.getMonth();
+              const isToday = isSameDay(day, new Date());
+              const isSelected = selectedDate && isSameDay(day, selectedDate);
+              const isOpen = doctorCanBookDate(doctor, dateKey) && !isPastDate(day);
+              return (
+                <button
+                  key={`${dateKey}-${index}`}
+                  type="button"
+                  disabled={!isOpen}
+                  onClick={() => {
+                    setSelectedDate(parseDateOnly(dateKey));
+                    setCalendarMonth(parseDateOnly(dateKey));
+                    setSelectedSlot(null);
+                  }}
+                  className={`calendar-day ${isSelected ? 'selected' : ''} ${isToday ? 'today' : ''} ${isOpen ? 'available' : 'blocked'} ${!isCurrentMonth ? 'muted' : ''}`}
+                >
+                  <span>{day.getDate()}</span>
+                  {isOpen && <span className="calendar-dot" />}
+                </button>
+              );
+            })}
+          </div>
+          {availableCount === 0 && (
+            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center text-sm font-bold text-slate-500">
+              This provider has not published working dates yet.
+            </div>
+          )}
+        </div>
+
+        <div className="pro-card p-5 space-y-4">
+          <SectionHeader eyebrow={selectedDate ? shortDate(selectedDate) : 'No date'} title="Choose a time" />
           <div className="grid grid-cols-3 gap-3">
             {slots.map(slot => (
                 <button 
@@ -978,7 +1059,7 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
             ))}
             {slots.length === 0 && (
               <div className="col-span-3 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center text-sm font-bold text-slate-500">
-                No appointment slots have been added yet.
+                {selectedDateIsOpen ? 'No time slots are open for this date.' : 'Select a green working date to see available times.'}
               </div>
             )}
           </div>
@@ -993,8 +1074,8 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
            </div>
            <span className="text-3xl font-black text-slate-950">{displayAmount(doctor.price)}</span>
         </div>
-        <Button variant="accent" className="w-full" onClick={handleBook} disabled={!selectedSlot || !hasFee || !approved}>
-           {!approved ? 'Provider Under Review' : !hasFee ? 'Consultation Fee Not Set' : selectedSlot ? `Confirm Booking for ${selectedSlot}` : 'Select a Time Slot'}
+        <Button variant="accent" className="w-full" onClick={handleBook} disabled={!selectedSlot || !selectedDateIsOpen || !hasFee || !approved}>
+           {!approved ? 'Provider Under Review' : !hasFee ? 'Consultation Fee Not Set' : !selectedDateIsOpen ? 'Select an Available Date' : selectedSlot ? `Confirm Booking for ${selectedSlot}` : 'Select a Time Slot'}
         </Button>
       </div>
     </div>
@@ -1326,7 +1407,7 @@ function ProfileView({ user, logout, onSaveProfile }) {
   );
 }
 
-function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile, onOpenNotifications, unreadCount = 0 }) {
+function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile, onOpenNotifications, unreadCount = 0, onAvailabilityChanged = () => {} }) {
   const [appointments, setAppointments] = useState([]);
   const [appointmentEvents, setAppointmentEvents] = useState({});
   const [profileOpen, setProfileOpen] = useState(false);
@@ -1342,44 +1423,31 @@ function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile, onOpe
     bio: doctor?.bio || '',
     price: numericAmount(doctor?.price),
     upi_id: doctor?.upi_id || '',
-    slots: doctor?.slots || {}, // Will store JSON object mapping dates to time slots
   });
   const doctorId = user?.doctorId;
 
-  // Calendar-specific state
-  const [selectedDate, setSelectedDate] = useState(null);
+  const [availabilityRows, setAvailabilityRows] = useState(() => doctorWorkingDates(doctor));
+  const [calendarMonth, setCalendarMonth] = useState(() => nextBookableDateForDoctor(doctor) || new Date());
+  const [selectedDate, setSelectedDate] = useState(() => nextBookableDateForDoctor(doctor) || new Date());
   const [dateSlots, setDateSlots] = useState([]);
   const [newSlot, setNewSlot] = useState('');
-  const [configuredDates, setConfiguredDates] = useState(new Set());
+  const [savingSchedule, setSavingSchedule] = useState(false);
+
+  const availabilityMap = useMemo(() => (
+    availabilityRows.reduce((map, row) => {
+      map[row.work_date] = row;
+      return map;
+    }, {})
+  ), [availabilityRows]);
+  const configuredDates = useMemo(() => new Set(availabilityRows.map(row => row.work_date)), [availabilityRows]);
 
   useEffect(() => {
-    // Initialize slots from doctor data, handling both legacy and new formats
-    let initialSlots = {};
-    if (doctor?.slots) {
-      // Try to parse as JSON (new format)
-      try {
-        const parsed = JSON.parse(doctor.slots);
-        if (typeof parsed === 'object' && parsed !== null) {
-          initialSlots = parsed;
-        } else {
-          // Legacy format: convert to object with __legacy key
-          const times = Array.isArray(doctor.slots)
-            ? doctor.slots
-            : doctor.slots.split(',').map(s => s.trim()).filter(Boolean);
-          initialSlots = { __legacy: times };
-        }
-      } catch (e) {
-        // Not valid JSON, treat as legacy format
-        const times = Array.isArray(doctor.slots)
-          ? doctor.slots
-          : doctor.slots.split(',').map(s => s.trim()).filter(Boolean);
-        initialSlots = { __legacy: times };
-      }
-    } else {
-      // Default slots
-      initialSlots = { __legacy: ['09:00 AM', '10:00 AM', '02:00 PM'] };
-    }
-
+    const rows = doctorWorkingDates(doctor);
+    const firstOpenDate = nextBookableDateForDoctor(doctor) || new Date();
+    setAvailabilityRows(rows);
+    setCalendarMonth(firstOpenDate);
+    setSelectedDate(firstOpenDate);
+    setDateSlots(slotsForDoctorDate(decorateDoctor(doctor, rows), firstOpenDate));
     setDoctorForm({
       name: user?.name || '',
       phone: user?.phone || '',
@@ -1391,9 +1459,13 @@ function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile, onOpe
       bio: doctor?.bio || '',
       price: numericAmount(doctor?.price),
       upi_id: doctor?.upi_id || '',
-      slots: initialSlots,
     });
   }, [doctor, user]);
+
+  useEffect(() => {
+    const dateKey = formatDate(selectedDate);
+    setDateSlots(uniqueSlots(availabilityMap[dateKey]?.slots || []));
+  }, [availabilityMap, selectedDate]);
   
   const fetchDoctorAppointments = useCallback(async () => {
       if (doctorId) {
@@ -1490,12 +1562,79 @@ function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile, onOpe
           bio: doctorForm.bio.trim(),
           price: displayAmount(doctorForm.price),
           upi_id: doctorForm.upi_id.trim(),
-          slots: serializeSlots(doctorForm.slots),
         }
       );
       setProfileOpen(false);
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  const saveSelectedDateSlots = async () => {
+    if (!doctorId || !selectedDate) return;
+    if (!supabase) {
+      showToast('Live backend is not configured.', 'error');
+      return;
+    }
+
+    const workDate = formatDate(selectedDate);
+    const slots = uniqueSlots(dateSlots);
+    setSavingSchedule(true);
+    try {
+      if (slots.length === 0) {
+        const { error } = await supabase
+          .from('doctor_working_dates')
+          .delete()
+          .eq('doctor_id', doctorId)
+          .eq('work_date', workDate);
+        if (error) throw error;
+        setAvailabilityRows(prev => prev.filter(row => row.work_date !== workDate));
+        showToast('Working date removed.', 'info');
+      } else {
+        const { data, error } = await supabase
+          .from('doctor_working_dates')
+          .upsert({
+            doctor_id: doctorId,
+            work_date: workDate,
+            slots,
+            is_available: true,
+          }, { onConflict: 'doctor_id,work_date' })
+          .select('id, doctor_id, work_date, slots, is_available')
+          .single();
+        if (error) throw error;
+        const nextRow = normalizeWorkingDates([data])[0] || { doctor_id: doctorId, work_date: workDate, slots, is_available: true };
+        setAvailabilityRows(prev => normalizeWorkingDates([
+          ...prev.filter(row => row.work_date !== workDate),
+          nextRow,
+        ]));
+        showToast(`Availability saved for ${shortDate(workDate)}.`, 'success');
+      }
+      await onAvailabilityChanged();
+    } catch (err) {
+      showToast(friendlyNetworkError(err, 'Unable to save availability.'), 'error');
+    } finally {
+      setSavingSchedule(false);
+    }
+  };
+
+  const removeWorkingDate = async (workDate) => {
+    if (!doctorId || !supabase) return;
+    setSavingSchedule(true);
+    try {
+      const { error } = await supabase
+        .from('doctor_working_dates')
+        .delete()
+        .eq('doctor_id', doctorId)
+        .eq('work_date', workDate);
+      if (error) throw error;
+      setAvailabilityRows(prev => prev.filter(row => row.work_date !== workDate));
+      if (formatDate(selectedDate) === workDate) setDateSlots([]);
+      showToast('Working date removed.', 'info');
+      await onAvailabilityChanged();
+    } catch (err) {
+      showToast(friendlyNetworkError(err, 'Unable to remove availability.'), 'error');
+    } finally {
+      setSavingSchedule(false);
     }
   };
 
@@ -1535,7 +1674,7 @@ function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile, onOpe
             <AlertTriangle size={18} className="mt-0.5 shrink-0" />
             <div>
               <p className="text-sm font-black">Profile under review</p>
-              <p className="mt-1 text-xs font-bold leading-relaxed">Patients can book after admin approval. Keep your fee, UPI, clinic, and slots ready.</p>
+              <p className="mt-1 text-xs font-bold leading-relaxed">Patients can book after admin approval. Keep your fee, UPI, clinic, and working calendar ready.</p>
             </div>
           </div>
         </div>
@@ -1549,10 +1688,20 @@ function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile, onOpe
           </button>
         </div>
         {!profileOpen ? (
-          <div className="grid grid-cols-2 gap-3 text-xs font-bold text-slate-600">
-            <div className="rounded-lg bg-slate-50 border border-slate-100 p-3">{doctor?.specialty || doctorForm.specialty}</div>
-            <div className="rounded-lg bg-slate-50 border border-slate-100 p-3">{displayAmount(doctor?.price || doctorForm.price)}</div>
-            <div className="rounded-lg bg-slate-50 border border-slate-100 p-3 col-span-2">{doctor?.clinic_name || doctorForm.clinic_name || 'Clinic not set'}</div>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3 text-xs font-bold text-slate-600">
+              <div className="rounded-lg bg-slate-50 border border-slate-100 p-3">{doctor?.specialty || doctorForm.specialty}</div>
+              <div className="rounded-lg bg-slate-50 border border-slate-100 p-3">{displayAmount(doctor?.price || doctorForm.price)}</div>
+              <div className="rounded-lg bg-slate-50 border border-slate-100 p-3 col-span-2">{doctor?.clinic_name || doctorForm.clinic_name || 'Clinic not set'}</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setProfileOpen(true)}
+              className="flex w-full items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-left text-sm font-black text-emerald-800 transition-colors hover:bg-emerald-100"
+            >
+              <span className="inline-flex items-center gap-2"><Calendar size={16} /> Manage working dates</span>
+              <ChevronRight size={17} />
+            </button>
           </div>
         ) : (
           <div className="space-y-6">
@@ -1576,175 +1725,163 @@ function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile, onOpe
               <textarea value={doctorForm.bio} onChange={(e) => updateDoctorField('bio', e.target.value)} className={`${inputClass} min-h-24 resize-none`} placeholder="Short professional bio" />
             </div>
 
-            {/* Calendar Interface for Slot Configuration */}
-            <div className="space-y-4">
-              <SectionHeader eyebrow="Availability" title="Configure appointment slots per date" />
-
-              {/* Date Selection Calendar */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-slate-800">Select Date</h3>
-                  <span className="text-sm text-slate-500">
-                    {selectedDate ? new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'No date selected'}
-                  </span>
+            <div className="space-y-4 rounded-lg border border-emerald-100 bg-emerald-50/45 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <SectionHeader eyebrow={`${configuredDates.size} dates live`} title="Working calendar" />
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    aria-label="Previous month"
+                    onClick={() => setCalendarMonth(prev => subtractMonths(prev, 1))}
+                    className="pro-icon-button h-9 w-9"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Next month"
+                    onClick={() => setCalendarMonth(prev => addMonths(prev, 1))}
+                    className="pro-icon-button h-9 w-9"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
                 </div>
+              </div>
 
-                {/* Calendar Grid */}
-                <div className="calendar-grid">
-                  {generateMonthDays(new Date()).map((day, index) => {
+              <div className="rounded-lg border border-emerald-100 bg-white p-3">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <p className="text-sm font-black text-slate-950">
+                    {calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                  </p>
+                  <p className="text-[11px] font-black uppercase text-emerald-700">Tap a date</p>
+                </div>
+                <div className="calendar-weekdays">
+                  {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+                    <span key={`${day}-${index}`}>{day}</span>
+                  ))}
+                </div>
+                <div className="calendar-grid provider-calendar">
+                  {generateMonthDays(calendarMonth).map((day, index) => {
+                    const dateKey = formatDate(day);
+                    const isCurrentMonth = day.getMonth() === calendarMonth.getMonth();
                     const isToday = isSameDay(day, new Date());
-                    const isSelected = selectedDate && isSameDay(day, new Date(selectedDate));
-                    const hasSlots = configuredDates.has(formatDate(day));
+                    const isSelected = selectedDate && isSameDay(day, selectedDate);
+                    const hasSlots = configuredDates.has(dateKey);
+                    const blocked = isPastDate(day);
 
                     return (
-                      <div
-                        key={index}
-                        className={`calendar-day ${isSelected ? 'selected' : ''} ${isToday ? 'today' : ''} ${hasSlots ? 'has-appointment' : ''} ${day.getMonth() !== new Date().getMonth() ? 'opacity-50' : ''}`}
+                      <button
+                        key={`${dateKey}-${index}`}
+                        type="button"
+                        disabled={blocked}
                         onClick={() => {
-                          setSelectedDate(day);
-                          // Load slots for this date
-                          const dateStr = formatDate(day);
-                          const slotsForDate = getSlotsForDate(doctorForm.slots, dateStr);
-                          setDateSlots(slotsForDate || []);
+                          setSelectedDate(parseDateOnly(dateKey));
+                          setCalendarMonth(parseDateOnly(dateKey));
                         }}
+                        className={`calendar-day ${isSelected ? 'selected' : ''} ${isToday ? 'today' : ''} ${hasSlots ? 'available' : ''} ${blocked ? 'blocked' : ''} ${!isCurrentMonth ? 'muted' : ''}`}
                       >
-                        <div className="flex-1">{day.getDate()}</div>
-                        {hasSlots && <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-2 h-2 bg-emerald-500 rounded-full" />}
-                      </div>
+                        <span>{day.getDate()}</span>
+                        {hasSlots && <span className="calendar-dot" />}
+                      </button>
                     );
                   })}
                 </div>
-
-                {/* Navigation for months */}
-                <div className="flex justify-between items-center mt-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const current = selectedDate || new Date();
-                      setSelectedDate(subtractMonths(current, 1));
-                    }}
-                    className="text-slate-500 hover:text-slate-700"
-                  >
-                    «
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const current = selectedDate || new Date();
-                      setSelectedDate(addMonths(current, 1));
-                    }}
-                    className="text-slate-500 hover:text-slate-700"
-                  >
-                    »
-                  </Button>
-                </div>
               </div>
 
-              {/* Slot Configuration for Selected Date */}
-              {selectedDate && (
-                <div className="space-y-4">
-                  <h3 className="font-semibold text-slate-800">Time Slots for {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-
-                  {/* Current slots display */}
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {dateSlots.map((slot, index) => (
-                      <span key={index} className="inline-flex items-center px-3 py-1.5 text-xs font-semibold bg-emerald-50 text-emerald-800 rounded-full border border-emerald-200">
-                        {slot}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const newSlots = [...dateSlots];
-                            newSlots.splice(index, 1);
-                            setDateSlots(newSlots);
-                          }}
-                          className="ml-2 h-4 w-4 text-emerald-600 hover:text-emerald-800"
-                        >
-                          ✕
-                        </button>
-                      </span>
-                    ))}
-                    {dateSlots.length === 0 && (
-                      <span className="px-3 py-1.5 text-xs font-semibold bg-slate-50 text-slate-500 rounded-full border border-slate-200">
-                        No slots configured
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Add new slot */}
-                  <div className="flex gap-3">
-                    <input
-                      type="text"
-                      value={newSlot}
-                      onChange={(e) => setNewSlot(e.target.value)}
-                      className="flex-1 min-w-0 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-cyan-300 focus:ring-4 focus:ring-cyan-100"
-                      placeholder="Enter time (e.g., 09:00 AM)"
-                    />
-                    <Button
-                      onClick={() => {
-                        if (newSlot.trim()) {
-                          setDateSlots([...dateSlots, newSlot.trim()]);
-                          setNewSlot('');
-                        }
-                      }}
-                      variant="outline"
-                    >
-                      Add Slot
-                    </Button>
-                  </div>
-
-                  {/* Save slots for this date */}
-                  <Button
-                    onClick={() => {
-                      const dateStr = formatDate(new Date(selectedDate));
-                      const updatedSlots = { ...doctorForm.slots, [dateStr]: dateSlots };
-                      setDoctorForm(prev => ({ ...prev, slots: updatedSlots }));
-                      setConfiguredDates(prev => new Set(prev).add(dateStr));
-                      showToast(`Slots saved for ${new Date(selectedDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`, 'success');
-                    }}
-                    variant="accent"
-                    className="w-full mt-4"
-                  >
-                    Save Slots for This Date
-                  </Button>
+              <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-4">
+                <div>
+                  <p className="text-[11px] font-black uppercase text-slate-500">Selected date</p>
+                  <h3 className="text-lg font-black text-slate-950">
+                    {parseDateOnly(selectedDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                  </h3>
                 </div>
-              )}
 
-              {/* Configured Dates Summary */}
-              <div className="mt-6">
-                <h3 className="font-semibold text-slate-800">Configured Dates</h3>
-                {configuredDates.size === 0 ? (
-                  <p className="text-slate-500 text-center py-4">No dates configured yet</p>
-                ) : (
-                  <div className="space-y-2">
-                    {[...configuredDates].map((dateStr, index) => (
-                      <div key={index} className="flex items-center justify-between px-4 py-3 bg-slate-50 rounded-lg border border-slate-200">
-                        <div className="flex-1">
-                          <p className="font-semibold text-slate-800">{new Date(dateStr).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-                          <p className="text-sm text-slate-500">
-                            {getSlotsForDate(doctorForm.slots, dateStr).join(', ') || 'No slots'}
-                          </p>
-                        </div>
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            const updatedSlots = { ...doctorForm.slots };
-                            delete updatedSlots[dateStr];
-                            setDoctorForm(prev => ({ ...prev, slots: updatedSlots }));
-                            setConfiguredDates(prev => {
-                              const newSet = new Set(prev);
-                              newSet.delete(dateStr);
-                              return newSet;
-                            });
-                          }}
-                          className="text-slate-500 hover:text-slate-700"
-                        >
-                          Remove
-                        </Button>
-                      </div>
-                    ))}
+                <div className="flex flex-wrap gap-2">
+                  {dateSlots.map((slot) => (
+                    <span key={slot} className="inline-flex items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-800">
+                      {slot}
+                      <button
+                        type="button"
+                        title={`Remove ${slot}`}
+                        onClick={() => setDateSlots(prev => prev.filter(item => item !== slot))}
+                        className="rounded-md p-0.5 text-emerald-700 hover:bg-emerald-100"
+                      >
+                        <X size={13} />
+                      </button>
+                    </span>
+                  ))}
+                  {dateSlots.length === 0 && (
+                    <span className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black text-slate-500">
+                      Patients cannot book this date until at least one time is added.
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newSlot}
+                    onChange={(event) => setNewSlot(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        const nextSlot = normalizeSlotValue(newSlot);
+                        if (!nextSlot) return;
+                        setDateSlots(prev => uniqueSlots([...prev, nextSlot]));
+                        setNewSlot('');
+                      }
+                    }}
+                    className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-cyan-300 focus:ring-4 focus:ring-cyan-100"
+                    placeholder="09:00 AM"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextSlot = normalizeSlotValue(newSlot);
+                      if (!nextSlot) return;
+                      setDateSlots(prev => uniqueSlots([...prev, nextSlot]));
+                      setNewSlot('');
+                    }}
+                    className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-cyan-100 bg-cyan-50 text-cyan-700 hover:bg-cyan-100"
+                    title="Add time slot"
+                  >
+                    <Plus size={18} />
+                  </button>
+                </div>
+
+                <Button onClick={saveSelectedDateSlots} variant="accent" className="w-full" disabled={savingSchedule || isPastDate(selectedDate)}>
+                  {savingSchedule ? <Loader2 className="animate-spin" /> : <Save size={16} />}
+                  {dateSlots.length ? 'Publish Working Date' : 'Remove Date From Calendar'}
+                </Button>
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="text-sm font-black text-slate-950">Published dates</h3>
+                {availabilityRows.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-slate-200 bg-white px-4 py-5 text-center text-sm font-bold text-slate-500">
+                    No working dates are live yet.
                   </div>
+                ) : (
+                  availabilityRows.map((row) => (
+                    <div key={row.work_date} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-black text-slate-950">{parseDateOnly(row.work_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</p>
+                        <p className="truncate text-xs font-bold text-slate-500">{row.slots.join(', ')}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeWorkingDate(row.work_date)}
+                        disabled={savingSchedule}
+                        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50"
+                        title={`Remove ${shortDate(row.work_date)}`}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))
                 )}
               </div>
+
             </div>
 
             <Button onClick={saveDoctorProfile} variant="accent" className="w-full mt-6" disabled={savingProfile}>
@@ -2302,10 +2439,11 @@ function AdminDashboard({
   );
 }
 
-function NotificationCenter({ open, notifications, onClose, onMarkRead, onMarkAllRead }) {
+function NotificationCenter({ open, notifications, onClose, onMarkRead, onMarkAllRead, notificationPermission = 'default', onEnableDeviceNotifications }) {
   if (!open) return null;
 
   const unreadCount = notifications.filter(item => !item.read_at).length;
+  const canEnableDeviceNotifications = notificationPermission === 'default' || notificationPermission === 'prompt';
 
   return (
     <div className="absolute inset-0 z-[90] bg-slate-950/35 backdrop-blur-sm animate-in fade-in">
@@ -2326,6 +2464,29 @@ function NotificationCenter({ open, notifications, onClose, onMarkRead, onMarkAl
         </div>
 
         <div className="max-h-[68vh] overflow-y-auto p-4 space-y-3 scrollbar-hide">
+          <div className="rounded-lg border border-cyan-100 bg-cyan-50 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-black text-slate-950">Device alerts</p>
+                <p className="mt-1 text-xs font-bold text-slate-600">
+                  {notificationPermission === 'granted'
+                    ? 'Browser/app notifications are enabled.'
+                    : notificationPermission === 'denied'
+                      ? 'Notifications are blocked in this browser.'
+                      : 'Enable alerts for booking and payment updates.'}
+                </p>
+              </div>
+              {canEnableDeviceNotifications && (
+                <button
+                  type="button"
+                  onClick={onEnableDeviceNotifications}
+                  className="shrink-0 rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white hover:bg-cyan-700"
+                >
+                  Enable
+                </button>
+              )}
+            </div>
+          </div>
           {notifications.length === 0 && (
             <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center">
               <Bell size={30} className="mx-auto mb-3 text-slate-300" />
@@ -2359,9 +2520,107 @@ function NotificationCenter({ open, notifications, onClose, onMarkRead, onMarkAl
   );
 }
 
+function MobileCommandMenu({
+  open,
+  role,
+  view,
+  setView,
+  onToggle,
+  onClose,
+  onOpenNotifications,
+  onLogout,
+  unreadCount = 0,
+}) {
+  if (!role) return null;
+
+  const roleHome = routeForRole(role);
+  const items = role === 'patient'
+    ? [
+        { id: 'home', icon: Zap, label: 'Home', action: () => setView('home') },
+        { id: 'search', icon: Search, label: 'Search', action: () => setView('search') },
+        { id: 'dashboard', icon: Calendar, label: 'Visits', action: () => setView('dashboard') },
+        { id: 'profile', icon: User, label: 'Profile', action: () => setView('profile') },
+      ]
+    : [
+        { id: roleHome, icon: role === 'admin' ? Shield : Stethoscope, label: role === 'admin' ? 'Admin' : 'Provider', action: () => setView(roleHome) },
+      ];
+
+  const runAction = (action) => {
+    action();
+    onClose();
+  };
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-[70]">
+      {open && (
+        <button
+          type="button"
+          aria-label="Close menu"
+          onClick={onClose}
+          className="pointer-events-auto absolute inset-0 bg-slate-950/35 backdrop-blur-sm animate-in fade-in"
+        />
+      )}
+
+      <button
+        type="button"
+        aria-label="Open menu"
+        onClick={onToggle}
+        className="pointer-events-auto absolute left-5 top-5 inline-flex h-12 w-12 items-center justify-center rounded-lg border border-slate-200 bg-white/95 text-slate-950 shadow-[0_18px_45px_rgba(15,23,42,0.18)] backdrop-blur-xl transition-transform active:scale-95"
+      >
+        {open ? <X size={20} /> : <Menu size={21} />}
+      </button>
+
+      {open && (
+        <div className="pointer-events-auto absolute left-5 right-5 top-20 rounded-lg border border-slate-200 bg-white p-2 shadow-[0_28px_80px_rgba(15,23,42,0.26)] view-panel">
+          {items.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => runAction(item.action)}
+              className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-black transition-colors ${
+                view === item.id ? 'bg-slate-950 text-white' : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-700'
+              }`}
+            >
+              <item.icon size={18} />
+              {item.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => runAction(onOpenNotifications)}
+            className="relative flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-black text-slate-700 transition-colors hover:bg-cyan-50 hover:text-cyan-700"
+          >
+            <Bell size={18} />
+            Notifications
+            {unreadCount > 0 && <span className="ml-auto rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-black text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+          </button>
+          <button
+            type="button"
+            onClick={() => runAction(onLogout)}
+            className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-black text-red-600 transition-colors hover:bg-red-50"
+          >
+            <LogOut size={18} />
+            Logout
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ==========================================
 // MAIN APP ROUTER & NAV
 // ==========================================
+export {
+  AdminDashboard,
+  DashboardView,
+  DoctorDashboard,
+  DoctorDetailView,
+  HomeView,
+  ProfileView,
+  SearchView,
+};
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [view, setView] = useState('login');
@@ -2376,14 +2635,71 @@ export default function App() {
   const [notification, setNotification] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState(() => {
+     if (typeof window !== 'undefined' && 'Notification' in window) return Notification.permission;
+     return Capacitor.isNativePlatform() ? 'prompt' : 'unsupported';
+  });
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [platformFeePercent, setPlatformFeePercent] = useState(DEFAULT_PLATFORM_FEE_PERCENT);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [viewport, setViewport] = useState(() => ({
+     width: typeof window === 'undefined' ? 430 : window.innerWidth,
+     height: typeof window === 'undefined' ? 900 : window.innerHeight,
+  }));
   const unreadNotificationCount = notifications.filter(item => !item.read_at).length;
+  const isCompactNav = viewport.width < 560 || (viewport.width / Math.max(viewport.height, 1)) < 0.72;
 
   const showToast = useCallback((msg, type='success') => {
      setNotification({msg, type});
      setTimeout(() => setNotification(null), 3500);
   }, []);
+
+  const enableDeviceNotifications = useCallback(async () => {
+     try {
+        if (Capacitor.isNativePlatform()) {
+           let granted = false;
+           if (Capacitor.isPluginAvailable('LocalNotifications')) {
+              const localPermission = await LocalNotifications.requestPermissions();
+              granted = localPermission.display === 'granted';
+           }
+           if (Capacitor.isPluginAvailable('PushNotifications')) {
+              const pushPermission = await PushNotifications.requestPermissions();
+              granted = granted || pushPermission.receive === 'granted';
+              if (pushPermission.receive === 'granted') await PushNotifications.register().catch(() => undefined);
+           }
+           setNotificationPermission(granted ? 'granted' : 'denied');
+           showToast(granted ? 'Device notifications enabled.' : 'Notifications were not enabled.', granted ? 'success' : 'error');
+           return;
+        }
+
+        if (typeof window !== 'undefined' && 'Notification' in window) {
+           const permission = await Notification.requestPermission();
+           setNotificationPermission(permission);
+           showToast(permission === 'granted' ? 'Browser notifications enabled.' : 'Notifications were not enabled.', permission === 'granted' ? 'success' : 'error');
+           return;
+        }
+
+        setNotificationPermission('unsupported');
+        showToast('This browser does not support notifications.', 'error');
+     } catch {
+        showToast('Unable to enable notifications on this device.', 'error');
+     }
+  }, [showToast]);
+
+  useEffect(() => {
+     const handleResize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
+     handleResize();
+     window.addEventListener('resize', handleResize);
+     window.addEventListener('orientationchange', handleResize);
+     return () => {
+        window.removeEventListener('resize', handleResize);
+        window.removeEventListener('orientationchange', handleResize);
+     };
+  }, []);
+
+  useEffect(() => {
+     setMobileMenuOpen(false);
+  }, [view, user?.role]);
 
   const fetchDoctors = useCallback(async () => {
      if (!supabase) {
@@ -2397,7 +2713,29 @@ export default function App() {
           .select()
           .order('created_at', { ascending: false });
         if (error) throw error;
-        setDoctors(mergeDoctors(data || []));
+        const doctorRows = data || [];
+        const doctorIds = doctorRows.map(doctor => doctor.id).filter(Boolean);
+        let schedulesByDoctor = new Map();
+
+        if (doctorIds.length) {
+          const { data: scheduleRows, error: scheduleError } = await supabase
+            .from('doctor_working_dates')
+            .select('id, doctor_id, work_date, slots, is_available')
+            .in('doctor_id', doctorIds)
+            .eq('is_available', true)
+            .gte('work_date', formatDate(new Date()))
+            .order('work_date', { ascending: true });
+
+          if (scheduleError && !['42P01', 'PGRST205'].includes(scheduleError.code)) throw scheduleError;
+          schedulesByDoctor = (scheduleRows || []).reduce((map, row) => {
+            const key = String(row.doctor_id);
+            if (!map.has(key)) map.set(key, []);
+            map.get(key).push(row);
+            return map;
+          }, new Map());
+        }
+
+        setDoctors(mergeDoctors(doctorRows.map(doctor => decorateDoctor(doctor, schedulesByDoctor.get(String(doctor.id)) || []))));
      } catch (err) {
         setDoctors([]);
         showToast(friendlyNetworkError(err, 'Unable to load doctors.'), 'error');
@@ -2601,6 +2939,7 @@ export default function App() {
         if (permission.receive === 'prompt') {
            permission = await PushNotifications.requestPermissions();
         }
+        setNotificationPermission(permission.receive === 'granted' ? 'granted' : 'denied');
         if (permission.receive === 'granted') {
            await PushNotifications.register();
         }
@@ -2695,6 +3034,14 @@ export default function App() {
      setView(routeForRole(userData.role));
   };
 
+  const openDoctorDetail = useCallback((doctor) => {
+     const decoratedDoctor = decorateDoctor(doctor);
+     setSelectedDoctor(decoratedDoctor);
+     setSelectedSlot(null);
+     setSelectedDate(nextBookableDateForDoctor(decoratedDoctor) || new Date());
+     setView('detail');
+  }, []);
+
   const handleLogout = async () => {
      if (supabase) {
         try {
@@ -2757,6 +3104,10 @@ export default function App() {
 
   const initiateBooking = async () => {
      if (!selectedSlot || !selectedDoctor || !user) return;
+     if (!doctorCanBookDate(selectedDoctor, selectedDate)) {
+         showToast("Choose an available working date before booking.", "error");
+         return;
+     }
      if (!supabase) {
          showToast("Live backend is not configured.", "error");
          return;
@@ -2766,7 +3117,7 @@ export default function App() {
          const { error } = await supabase.rpc('create_appointment_request', {
            p_doctor_id: selectedDoctor.id,
            p_slot: selectedSlot,
-           p_appointment_date: selectedDate.toISOString(),
+           p_appointment_date: formatDate(selectedDate),
          });
          if (error) throw error;
          showToast("Booking request sent successfully!", "success");
@@ -2883,6 +3234,12 @@ export default function App() {
     ? doctors.find((doctor) => String(doctor.id) === String(user.doctorId))
     : null;
 
+  useEffect(() => {
+     if (!selectedDoctor?.id) return;
+     const refreshedDoctor = doctors.find((doctor) => String(doctor.id) === String(selectedDoctor.id));
+     if (refreshedDoctor) setSelectedDoctor(refreshedDoctor);
+  }, [doctors, selectedDoctor?.id]);
+
   if (loadingAuth) {
      return (
        <div className="min-h-screen flex items-center justify-center app-canvas">
@@ -2903,7 +3260,7 @@ export default function App() {
           </div>
         )}
 
-        <div className="w-full sm:max-w-[430px] bg-white min-h-screen sm:min-h-[calc(100vh-2rem)] sm:my-4 relative app-frame overflow-hidden flex flex-col">
+        <div className={`w-full ${isCompactNav ? 'max-w-none' : 'sm:max-w-[430px]'} bg-white min-h-screen sm:min-h-[calc(100vh-2rem)] ${isCompactNav ? '' : 'sm:my-4'} relative app-frame overflow-hidden flex flex-col ${isCompactNav ? 'aspect-compact' : ''}`}>
            {view === 'login' && (
              <LoginScreen
                onLogin={handleLogin}
@@ -2920,14 +3277,14 @@ export default function App() {
              />
            )}
            {view === 'admin' && <AdminDashboard user={user} logout={handleLogout} doctors={doctors} showToast={showToast} onOpenNotifications={() => setNotificationsOpen(true)} unreadCount={unreadNotificationCount} onDoctorsChanged={fetchDoctors} platformFeePercent={platformFeePercent} onPlatformFeeChanged={setPlatformFeePercent} />}
-           {view === 'doctor_dashboard' && <DoctorDashboard user={user} doctor={doctorProfile} logout={handleLogout} showToast={showToast} onSaveProfile={handleSaveProfile} onOpenNotifications={() => setNotificationsOpen(true)} unreadCount={unreadNotificationCount} />}
+           {view === 'doctor_dashboard' && <DoctorDashboard user={user} doctor={doctorProfile} logout={handleLogout} showToast={showToast} onSaveProfile={handleSaveProfile} onOpenNotifications={() => setNotificationsOpen(true)} unreadCount={unreadNotificationCount} onAvailabilityChanged={fetchDoctors} />}
            
            {['home', 'search', 'detail', 'dashboard', 'profile', 'success'].includes(view) && user && user.role === 'patient' && (
               <div className="flex-1 flex flex-col h-full overflow-hidden relative">
                  <div key={view} className="flex-1 overflow-y-auto scrollbar-hide view-panel">
-                    {view === 'home' && <HomeView setView={setView} setSearchQuery={setSearchQuery} doctors={doctors} setSelectedDoctor={setSelectedDoctor} onOpenNotifications={() => setNotificationsOpen(true)} unreadCount={unreadNotificationCount} />}
-                    {view === 'search' && <SearchView searchQuery={searchQuery} setSearchQuery={setSearchQuery} doctors={doctors} setView={setView} setSelectedDoctor={setSelectedDoctor} activeCategory={activeCategory} setActiveCategory={setActiveCategory} />}
-                    {view === 'detail' && <DoctorDetailView doctor={selectedDoctor} setView={setView} selectedSlot={selectedSlot} setSelectedSlot={setSelectedSlot} selectedDate={selectedDate} handleBook={initiateBooking} />}
+                    {view === 'home' && <HomeView setView={setView} setSearchQuery={setSearchQuery} doctors={doctors} onSelectDoctor={openDoctorDetail} onOpenNotifications={() => setNotificationsOpen(true)} unreadCount={unreadNotificationCount} />}
+                    {view === 'search' && <SearchView searchQuery={searchQuery} setSearchQuery={setSearchQuery} doctors={doctors} setView={setView} onSelectDoctor={openDoctorDetail} activeCategory={activeCategory} setActiveCategory={setActiveCategory} />}
+                    {view === 'detail' && <DoctorDetailView key={selectedDoctor?.id || 'detail'} doctor={selectedDoctor} setView={setView} selectedSlot={selectedSlot} setSelectedSlot={setSelectedSlot} selectedDate={selectedDate} setSelectedDate={setSelectedDate} handleBook={initiateBooking} />}
                     {view === 'dashboard' && <DashboardView appointments={appointments} appointmentEvents={appointmentEvents} doctors={doctors} onOpenUpi={handleOpenUpi} onSubmitPayment={handleSubmitPayment} onPayCash={handlePayCash} platformFeePercent={platformFeePercent} />}
                     {view === 'profile' && <ProfileView user={user} logout={handleLogout} onSaveProfile={handleSaveProfile} />}
                     {view === 'success' && (
@@ -2943,7 +3300,7 @@ export default function App() {
                     )}
                  </div>
 
-                 {!['detail', 'success', 'login'].includes(view) && (
+                 {!isCompactNav && !['detail', 'success', 'login'].includes(view) && (
                     <div className="absolute bottom-0 w-full px-5 pb-5 pt-2 z-40 pointer-events-none">
                        <div className="bg-white/95 backdrop-blur-2xl border border-slate-200 p-2 rounded-xl flex justify-around items-center shadow-[0_20px_50px_rgba(15,23,42,0.14)] pointer-events-auto">
                          {[
@@ -2969,13 +3326,30 @@ export default function App() {
               </div>
            )}
            {user && (
+             <>
+             {isCompactNav && view !== 'login' && (
+               <MobileCommandMenu
+                 open={mobileMenuOpen}
+                 role={user.role}
+                 view={view}
+                 setView={setView}
+                 onToggle={() => setMobileMenuOpen(prev => !prev)}
+                 onClose={() => setMobileMenuOpen(false)}
+                 onOpenNotifications={() => setNotificationsOpen(true)}
+                 onLogout={handleLogout}
+                 unreadCount={unreadNotificationCount}
+               />
+             )}
              <NotificationCenter
                open={notificationsOpen}
                notifications={notifications}
                onClose={() => setNotificationsOpen(false)}
                onMarkRead={markNotificationRead}
                onMarkAllRead={markAllNotificationsRead}
+               notificationPermission={notificationPermission}
+               onEnableDeviceNotifications={enableDeviceNotifications}
              />
+             </>
            )}
         </div>
      </div>
