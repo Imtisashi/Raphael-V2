@@ -11,8 +11,9 @@ import {
   Stethoscope,
   UserRound,
 } from 'lucide-react';
+import { triggerHaptic, withHaptic } from '../utils/haptics';
 
-const inputClass = 'h-14 w-full rounded-lg border border-slate-200 bg-white px-4 text-base font-semibold text-slate-950 shadow-sm outline-none transition-all duration-200 placeholder:text-slate-400 focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100';
+const inputClass = 'auth-input h-14 w-full rounded-lg border border-slate-200 bg-white px-4 text-base font-semibold text-slate-950 shadow-sm outline-none transition-all duration-200 placeholder:text-slate-400 focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100';
 const iconInputClass = `${inputClass} pl-12`;
 
 const AuthField = ({ icon: Icon, className = '', children, ...props }) => (
@@ -27,10 +28,11 @@ const AuthField = ({ icon: Icon, className = '', children, ...props }) => (
   </label>
 );
 
-const SubmitButton = ({ children, loading, ...props }) => (
+const SubmitButton = ({ children, loading, onClick, haptic = 'medium', ...props }) => (
   <button
     type="submit"
-    className="flex h-14 w-full items-center justify-center gap-2 rounded-lg bg-slate-950 px-5 text-base font-black text-white shadow-lg shadow-slate-900/15 transition-all duration-300 ease-out hover:bg-slate-800 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+    onClick={withHaptic(onClick, haptic)}
+    className="button-lift pressable flex h-14 w-full items-center justify-center gap-2 rounded-lg bg-slate-950 px-5 text-base font-black text-white shadow-lg shadow-slate-900/15 transition-all duration-300 ease-out hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
     disabled={loading}
     {...props}
   >
@@ -225,6 +227,7 @@ export default function LoginView({
   };
 
   const switchMode = (nextMode) => {
+    triggerHaptic('selection');
     setError('');
     setMode(nextMode);
     if (nextMode === 'forgot' && email && !resetEmail) setResetEmail(email);
@@ -233,7 +236,7 @@ export default function LoginView({
   return (
     <div className="auth-screen min-h-screen w-full overflow-y-auto px-5 py-8 font-sans">
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md flex-col justify-center">
-        <div className="mb-8 text-center view-panel">
+        <div className="login-brand-panel mb-8 text-center view-panel">
           {appIcon && (
             <img
               src={appIcon}
@@ -243,9 +246,23 @@ export default function LoginView({
           )}
           <h1 className="text-4xl font-black text-slate-950">Rapha'l</h1>
           <p className="mt-2 text-sm font-bold text-slate-500">Doctor appointments, payments, and updates.</p>
+          <div className="hero-stat-strip auth-stat-strip mt-5 grid grid-cols-3 gap-2">
+            <div>
+              <span>Auth</span>
+              <strong>Live</strong>
+            </div>
+            <div>
+              <span>Care</span>
+              <strong>24/7</strong>
+            </div>
+            <div>
+              <span>Pay</span>
+              <strong>UPI</strong>
+            </div>
+          </div>
         </div>
 
-        <section className="auth-form-surface view-panel">
+        <section className="auth-form-surface login-form-surface view-panel">
           <ConfigNotice hasSupabaseConfig={hasSupabaseConfig} supabaseConfigStatus={supabaseConfigStatus} />
 
           {mode === 'login' && (
@@ -278,8 +295,8 @@ export default function LoginView({
                 <button
                   type="button"
                   title={showPassword ? 'Hide password' : 'Show password'}
-                  onClick={() => setShowPassword((value) => !value)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-cyan-700"
+                  onClick={() => { triggerHaptic('selection'); setShowPassword((value) => !value); }}
+                  className="pressable absolute right-4 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-cyan-700"
                 >
                   {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
                 </button>
@@ -292,7 +309,7 @@ export default function LoginView({
               <button
                 type="button"
                 onClick={() => switchMode('forgot')}
-                className="h-11 w-full rounded-lg text-sm font-black text-cyan-700 transition-colors hover:bg-cyan-50 hover:text-cyan-900"
+                className="pressable h-11 w-full rounded-lg text-sm font-black text-cyan-700 transition-colors hover:bg-cyan-50 hover:text-cyan-900"
               >
                 Forgot password?
               </button>
@@ -301,7 +318,7 @@ export default function LoginView({
                 <button
                   type="button"
                   onClick={() => switchMode('register')}
-                  className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-800 shadow-sm transition-all hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800"
+                  className="button-lift pressable flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-800 shadow-sm transition-all hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800"
                 >
                   Create new account <ArrowRight size={16} />
                 </button>
@@ -332,7 +349,7 @@ export default function LoginView({
               <button
                 type="button"
                 onClick={() => switchMode('login')}
-                className="h-11 w-full rounded-lg text-sm font-black text-slate-500 transition-colors hover:bg-slate-50 hover:text-cyan-700"
+                className="pressable h-11 w-full rounded-lg text-sm font-black text-slate-500 transition-colors hover:bg-slate-50 hover:text-cyan-700"
               >
                 Back to login
               </button>
@@ -353,8 +370,8 @@ export default function LoginView({
                   <button
                     key={id}
                     type="button"
-                    onClick={() => setRole(id)}
-                    className={`flex h-11 items-center justify-center gap-2 rounded-md text-sm font-black transition-all ${role === id ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-500 hover:bg-white hover:text-cyan-700'}`}
+                    onClick={() => { triggerHaptic('selection'); setRole(id); }}
+                    className={`pressable flex h-11 items-center justify-center gap-2 rounded-md text-sm font-black transition-all ${role === id ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-500 hover:bg-white hover:text-cyan-700'}`}
                   >
                     {React.createElement(Icon, { size: 16 })}
                     {label}
@@ -432,8 +449,8 @@ export default function LoginView({
                 <button
                   type="button"
                   title={showPassword ? 'Hide password' : 'Show password'}
-                  onClick={() => setShowPassword((value) => !value)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-cyan-700"
+                  onClick={() => { triggerHaptic('selection'); setShowPassword((value) => !value); }}
+                  className="pressable absolute right-4 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-cyan-700"
                 >
                   {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
                 </button>
@@ -446,7 +463,7 @@ export default function LoginView({
               <button
                 type="button"
                 onClick={() => switchMode('login')}
-                className="h-11 w-full rounded-lg text-sm font-black text-slate-500 transition-colors hover:bg-slate-50 hover:text-cyan-700"
+                className="pressable h-11 w-full rounded-lg text-sm font-black text-slate-500 transition-colors hover:bg-slate-50 hover:text-cyan-700"
               >
                 Back to login
               </button>

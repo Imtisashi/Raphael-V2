@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { hasSupabaseConfig, supabase, supabaseConfigStatus } from './lib/supabaseClient';
 import { generateAdminReport, generateReceipt } from './utils/pdfGenerator';
+import { triggerHaptic, withHaptic } from './utils/haptics';
 import LoginScreen from './views/LoginView';
 import appIcon from '../icons/icon-128.webp';
 
@@ -596,8 +597,8 @@ const saveUserProfile = async (authUser, profileInput) => {
 // ==========================================
 // PREMIUM UI COMPONENTS
 // ==========================================
-const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false }) => {
-  const baseStyle = "px-6 py-3.5 rounded-lg font-bold transition-all duration-300 ease-out active:scale-[0.99] flex items-center justify-center gap-2 outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-4";
+const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false, haptic = 'light', type = 'button' }) => {
+  const baseStyle = "button-lift pressable px-6 py-3.5 rounded-lg font-bold transition-all duration-300 ease-out flex items-center justify-center gap-2 outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-4";
   const variants = {
     primary: "bg-slate-950 text-white shadow-lg shadow-slate-900/20 hover:bg-slate-800/90 focus-visible:ring-slate-900/50 focus-visible:ring-offset-slate-900/50",
     accent: "bg-gradient-to-r from-cyan-500 via-sky-500 to-emerald-500 text-white shadow-lg shadow-[0_4px_6px_-1px_rgba(16,185,129,0.3),0_2px_4px_-2px_rgba(16,185,129,0.2)] hover:brightness-105 focus-visible:ring-cyan-500/50 focus-visible:ring-offset-cyan-500/50",
@@ -607,7 +608,7 @@ const Button = ({ children, onClick, variant = 'primary', className = '', disabl
     outline: "bg-transparent border border-slate-200 text-slate-600 hover:border-cyan-500/50 hover:text-cyan-700/80 focus-visible:ring-slate-200/50 focus-visible:ring-offset-slate-200/50"
   };
   return (
-    <button onClick={onClick} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}>
+    <button type={type} onClick={withHaptic(onClick, haptic)} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}>
       {children}
     </button>
   );
@@ -651,7 +652,7 @@ const SectionHeader = ({ eyebrow, title, action, onAction }) => (
       <h2 className="text-xl font-black text-slate-950">{title}</h2>
     </div>
     {action && (
-      <button onClick={onAction} className="text-sm font-bold text-slate-600 hover:text-cyan-700 flex items-center gap-1">
+      <button type="button" onClick={withHaptic(onAction, 'selection')} className="pressable text-sm font-bold text-slate-600 hover:text-cyan-700 flex items-center gap-1">
         {action} <ChevronRight size={15} />
       </button>
     )}
@@ -671,12 +672,17 @@ const MetricPill = ({ icon: Icon, label, value, tone = 'text-cyan-700 bg-cyan-50
 const DoctorCard = ({ doctor, onClick, featured = false }) => {
   const meta = specialtyMeta(doctor.specialty);
   const Icon = meta.icon;
+  const nextAvailability = nextAvailabilityForDoctor(doctor);
+  const slotCount = Array.isArray(nextAvailability?.slots) ? nextAvailability.slots.length : 0;
+  const availabilityText = nextAvailability?.work_date
+    ? `${shortDate(nextAvailability.work_date)} - ${slotCount || 'Open'} slot${slotCount === 1 ? '' : 's'}`
+    : 'Calendar opening soon';
 
   return (
     <button
       type="button"
-      onClick={onClick}
-      className={`group pro-card w-full text-left ${featured ? 'p-6' : 'p-4'} hover:-translate-y-[3px] hover:shadow-xl hover:shadow-cyan-500/15 transition-all duration-300`}
+      onClick={withHaptic(onClick, featured ? 'medium' : 'selection')}
+      className={`group doctor-card pro-card w-full text-left ${featured ? 'p-6' : 'p-4'} transition-all duration-300`}
     >
       <div className="flex items-start gap-4">
         <Avatar name={doctor.name} url={doctor.image} specialty={doctor.specialty} size={featured ? 'lg' : 'md'} />
@@ -701,9 +707,12 @@ const DoctorCard = ({ doctor, onClick, featured = false }) => {
             <span className={`inline-flex items-center gap-2 rounded-md border px-3 py-1 ${meta.soft}`}>
               {React.createElement(Icon, { size: 12 })} {meta.label}
             </span>
+            <span className={`inline-flex items-center gap-2 rounded-md border px-3 py-1 ${nextAvailability ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>
+              <Calendar size={12} /> {availabilityText}
+            </span>
           </div>
 
-          <div className="mt-5 flex items-center justify-between rounded-lg bg-slate-50 border border-slate-100 px-4 py-3">
+          <div className="availability-strip mt-5 flex items-center justify-between rounded-lg bg-slate-50 border border-slate-100 px-4 py-3">
             <div className="flex items-center gap-3 text-xs font-bold text-slate-600">
               <Timer size={14} className="text-emerald-600" />
               <span>{nextSlotFor(doctor)}</span>
@@ -727,11 +736,17 @@ function HomeView({ setView, setSearchQuery, doctors, onSelectDoctor, onOpenNoti
   const [routing, setRouting] = useState(false);
   const featuredDoctors = doctors.slice(0, 3);
   const specialties = uniqueSpecialties();
+  const openToday = doctors.filter((doctor) => doctorCanBookDate(doctor, formatDate(new Date()))).length;
+  const openSoon = doctors.filter((doctor) => nextAvailabilityForDoctor(doctor)).length;
+  const liveSlotCount = doctors.reduce((total, doctor) => (
+    total + doctorWorkingDates(doctor).reduce((sum, day) => sum + (Array.isArray(day.slots) ? day.slots.length : 0), 0)
+  ), 0);
 
   const routeToCare = useCallback((value) => {
     const query = String(value ?? symptomInput).trim();
     if (!query) return;
 
+    triggerHaptic('selection');
     setSearchQuery(specialtyForInput(query) || query);
     setRouting(true);
     window.setTimeout(() => {
@@ -743,6 +758,7 @@ function HomeView({ setView, setSearchQuery, doctors, onSelectDoctor, onOpenNoti
   const searchDirectly = useCallback((value) => {
     const query = String(value ?? symptomInput).trim();
     if (!query) return;
+    triggerHaptic('selection');
     setSearchQuery(query);
     setView('search');
   }, [setSearchQuery, setView, symptomInput]);
@@ -757,10 +773,25 @@ function HomeView({ setView, setSearchQuery, doctors, onSelectDoctor, onOpenNoti
               Book trusted care from live provider records.
             </h1>
           </div>
-          <button type="button" onClick={onOpenNotifications} className="pro-icon-button relative">
+          <button type="button" onClick={withHaptic(onOpenNotifications, 'selection')} className="pro-icon-button pressable relative">
             <Bell size={19} />
             {unreadCount > 0 && <span className="absolute -right-1 -top-1 h-5 min-w-5 rounded-full bg-red-500 px-1 text-[10px] font-black leading-5 text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
           </button>
+        </div>
+
+        <div className="relative z-10 mb-5 grid grid-cols-3 gap-2 hero-stat-strip">
+          <div>
+            <span>Today</span>
+            <strong>{openToday || openSoon}</strong>
+          </div>
+          <div>
+            <span>Slots</span>
+            <strong>{liveSlotCount}</strong>
+          </div>
+          <div>
+            <span>Updates</span>
+            <strong>{unreadCount}</strong>
+          </div>
         </div>
 
         <form
@@ -778,7 +809,7 @@ function HomeView({ setView, setSearchQuery, doctors, onSelectDoctor, onOpenNoti
             className="w-full h-14 pl-12 pr-14 rounded-lg bg-white text-slate-900 placeholder-slate-400 outline-none font-semibold"
             onChange={(e) => setSymptomInput(e.target.value)}
           />
-          <button type="submit" className="absolute right-2 top-2 p-2.5 rounded-lg bg-slate-950 text-white hover:bg-slate-800 transition-colors">
+          <button type="submit" className="pressable absolute right-2 top-2 p-2.5 rounded-lg bg-slate-950 text-white hover:bg-slate-800 transition-colors">
             <ArrowRight size={16} />
           </button>
         </form>
@@ -789,7 +820,7 @@ function HomeView({ setView, setSearchQuery, doctors, onSelectDoctor, onOpenNoti
             { prompt: 'chest pain', icon: HeartPulse },
             { prompt: 'skin rash', icon: Sparkles },
           ].map(({ prompt, icon: Icon }) => (
-            <button key={prompt} onClick={() => routeToCare(prompt)} className="quick-chip">
+            <button type="button" key={prompt} onClick={() => routeToCare(prompt)} className="quick-chip pressable">
               {React.createElement(Icon, { size: 14 })} {prompt}
             </button>
           ))}
@@ -812,7 +843,7 @@ function HomeView({ setView, setSearchQuery, doctors, onSelectDoctor, onOpenNoti
                 Search symptoms, specialties, districts, or provider names across real available records.
               </p>
             </div>
-            <button onClick={() => routeToCare()} className="h-14 w-14 rounded-lg bg-slate-950 text-white flex items-center justify-center shadow-lg shadow-slate-900/20">
+            <button type="button" onClick={() => routeToCare()} className="button-lift pressable h-14 w-14 rounded-lg bg-slate-950 text-white flex items-center justify-center shadow-lg shadow-slate-900/20">
               {routing ? <Loader2 size={22} className="animate-spin" /> : <ArrowRight size={22} />}
             </button>
           </div>
@@ -827,8 +858,9 @@ function HomeView({ setView, setSearchQuery, doctors, onSelectDoctor, onOpenNoti
               return (
                 <button
                   key={specialty}
-                  onClick={() => { setSearchQuery(specialty); setView('search'); }}
-                  className="min-w-[112px] pro-card p-4"
+                  type="button"
+                  onClick={() => { triggerHaptic('selection'); setSearchQuery(specialty); setView('search'); }}
+                  className="specialty-tile min-w-[112px] pro-card p-4"
                 >
                   <div className={`h-10 w-10 rounded-lg bg-gradient-to-br ${meta.tone} text-white flex items-center justify-center mb-3 shadow-md shadow-slate-900/10`}>
                     <Icon size={19} />
@@ -845,7 +877,7 @@ function HomeView({ setView, setSearchQuery, doctors, onSelectDoctor, onOpenNoti
 
         <section className="space-y-3">
           <SectionHeader eyebrow="Recommended" title="Top specialists" action="See all" onAction={() => setView('search')} />
-          <div className="grid gap-3">
+          <div className="grid gap-3 stagger-list">
             {featuredDoctors.map((doctor, index) => (
               <DoctorCard
                 key={doctor.id}
@@ -885,7 +917,7 @@ function SearchView({ searchQuery, setSearchQuery, doctors, setView, onSelectDoc
     <div className="h-full flex flex-col app-screen min-h-screen pb-28">
       <div className="sticky top-0 bg-white/95 backdrop-blur-xl z-20 pt-4 pb-4 px-5 border-b border-slate-100 shadow-sm">
         <div className="flex items-center gap-3 mb-4">
-          <button onClick={() => setView('home')} className="pro-icon-button"><ChevronLeft size={20}/></button>
+          <button type="button" onClick={withHaptic(() => setView('home'), 'selection')} className="pro-icon-button pressable"><ChevronLeft size={20}/></button>
           <div className="flex-1 relative group pro-command-bar shadow-none">
             <Search className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-cyan-500 transition-colors" size={18} />
             <input autoFocus type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Find your doctor..." className="w-full bg-white rounded-lg py-3 pl-11 pr-4 outline-none font-semibold text-sm" />
@@ -893,11 +925,11 @@ function SearchView({ searchQuery, setSearchQuery, doctors, setView, onSelectDoc
         </div>
         <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
           {['All', ...Array.from(new Set(Object.values(SYMPTOM_MAP)))].map(cat => (
-            <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-4 py-2 rounded-lg text-xs font-black whitespace-nowrap transition-all border ${activeCategory === cat ? 'bg-slate-950 text-white border-slate-950 shadow-md shadow-slate-900/15' : 'bg-white text-slate-600 border-slate-200 hover:border-cyan-300'}`}>{cat}</button>
+            <button type="button" key={cat} onClick={() => { triggerHaptic('selection'); setActiveCategory(cat); }} className={`pressable px-4 py-2 rounded-lg text-xs font-black whitespace-nowrap transition-all border ${activeCategory === cat ? 'bg-slate-950 text-white border-slate-950 shadow-md shadow-slate-900/15' : 'bg-white text-slate-600 border-slate-200 hover:border-cyan-300'}`}>{cat}</button>
           ))}
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+      <div className="flex-1 overflow-y-auto p-5 space-y-4 stagger-list">
         <SectionHeader eyebrow={`${filteredDoctors.length} matches`} title={searchQuery ? `Results for ${searchQuery}` : 'Browse specialists'} />
         {filteredDoctors.length === 0 && (
            <div className="text-center py-16 pro-card border-dashed">
@@ -931,7 +963,7 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
   return (
     <div className="h-full flex flex-col app-screen">
       <div className="relative shrink-0 px-6 pt-6 pb-7 overflow-hidden pro-detail-hero text-white">
-        <button onClick={() => { setSelectedSlot(null); setView('search'); }} className="relative z-20 p-2.5 bg-white/15 hover:bg-white/25 backdrop-blur-md rounded-lg text-white transition-colors border border-white/20"><ChevronLeft size={20} /></button>
+        <button type="button" onClick={withHaptic(() => { setSelectedSlot(null); setView('search'); }, 'selection')} className="pressable relative z-20 p-2.5 bg-white/15 hover:bg-white/25 backdrop-blur-md rounded-lg text-white transition-colors border border-white/20"><ChevronLeft size={20} /></button>
 
         <div className="relative z-10 mt-8 flex items-end justify-between gap-5">
           <div className="min-w-0">
@@ -983,16 +1015,16 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
               <button
                 type="button"
                 aria-label="Previous month"
-                onClick={() => setCalendarMonth(prev => subtractMonths(prev, 1))}
-                className="pro-icon-button h-9 w-9"
+                onClick={withHaptic(() => setCalendarMonth(prev => subtractMonths(prev, 1)), 'selection')}
+                className="pro-icon-button pressable h-9 w-9"
               >
                 <ChevronLeft size={16} />
               </button>
               <button
                 type="button"
                 aria-label="Next month"
-                onClick={() => setCalendarMonth(prev => addMonths(prev, 1))}
-                className="pro-icon-button h-9 w-9"
+                onClick={withHaptic(() => setCalendarMonth(prev => addMonths(prev, 1)), 'selection')}
+                className="pro-icon-button pressable h-9 w-9"
               >
                 <ChevronRight size={16} />
               </button>
@@ -1022,6 +1054,7 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
                   type="button"
                   disabled={!isOpen}
                   onClick={() => {
+                    triggerHaptic('selection');
                     setSelectedDate(parseDateOnly(dateKey));
                     setCalendarMonth(parseDateOnly(dateKey));
                     setSelectedSlot(null);
@@ -1043,12 +1076,13 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
 
         <div className="pro-card p-5 space-y-4">
           <SectionHeader eyebrow={selectedDate ? shortDate(selectedDate) : 'No date'} title="Choose a time" />
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-3 stagger-list">
             {slots.map(slot => (
                 <button 
                   key={slot} 
-                  onClick={() => setSelectedSlot(slot)} 
-                  className={`py-3.5 rounded-lg text-xs font-black transition-all duration-300 border outline-none focus:ring-4 ${
+                  type="button"
+                  onClick={() => { triggerHaptic('selection'); setSelectedSlot(slot); }}
+                  className={`pressable py-3.5 rounded-lg text-xs font-black transition-all duration-300 border outline-none focus:ring-4 ${
                     selectedSlot === slot 
                       ? 'bg-slate-950 border-slate-950 text-white shadow-lg shadow-slate-900/15 focus:ring-slate-900/20'
                       : 'bg-white border-slate-200 text-slate-600 hover:border-cyan-300 hover:bg-cyan-50/60 focus:ring-cyan-100'
@@ -1066,7 +1100,7 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
         </div>
       </div>
       
-      <div className="absolute bottom-0 left-0 w-full bg-white/95 backdrop-blur-xl border-t border-slate-100 p-5 pb-6 z-30 shadow-[0_-20px_50px_rgba(15,23,42,0.10)]">
+      <div className="booking-bar absolute bottom-0 left-0 w-full bg-white/95 backdrop-blur-xl border-t border-slate-100 p-5 pb-6 z-30 shadow-[0_-20px_50px_rgba(15,23,42,0.10)]">
         <div className="flex justify-between items-center mb-4">
            <div>
              <span className="text-xs font-black text-slate-500 uppercase">Consultation</span>
@@ -1074,7 +1108,7 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
            </div>
            <span className="text-3xl font-black text-slate-950">{displayAmount(doctor.price)}</span>
         </div>
-        <Button variant="accent" className="w-full" onClick={handleBook} disabled={!selectedSlot || !selectedDateIsOpen || !hasFee || !approved}>
+        <Button variant="accent" className="w-full" haptic="success" onClick={handleBook} disabled={!selectedSlot || !selectedDateIsOpen || !hasFee || !approved}>
            {!approved ? 'Provider Under Review' : !hasFee ? 'Consultation Fee Not Set' : !selectedDateIsOpen ? 'Select an Available Date' : selectedSlot ? `Confirm Booking for ${selectedSlot}` : 'Select a Time Slot'}
         </Button>
       </div>
@@ -1248,7 +1282,7 @@ function DashboardView({ appointments, appointmentEvents = {}, doctors = [], onO
                      Submit
                    </button>
                  </div>
-                 <button onClick={() => onPayCash(apt)} className="w-full text-center text-xs font-black text-slate-500 hover:text-cyan-700">
+                 <button type="button" onClick={withHaptic(() => onPayCash(apt), 'selection')} className="pressable w-full text-center text-xs font-black text-slate-500 hover:text-cyan-700">
                    Paying cash at clinic instead
                  </button>
                </div>
@@ -1323,10 +1357,10 @@ function ProfileView({ user, logout, onSaveProfile }) {
             <h1 className="text-3xl font-black text-slate-950 mt-1">Account</h1>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setIsEditing(prev => !prev)} className="pro-icon-button">
+            <button type="button" onClick={() => { triggerHaptic('selection'); setIsEditing(prev => !prev); }} className="pro-icon-button pressable">
               {isEditing ? <X size={18} /> : <Edit3 size={18} />}
             </button>
-            <button onClick={logout} className="pro-icon-button text-red-600 bg-red-50 border-red-100 hover:bg-red-100"><LogOut size={18} /></button>
+            <button type="button" onClick={withHaptic(logout, 'warning')} className="pro-icon-button pressable text-red-600 bg-red-50 border-red-100 hover:bg-red-100"><LogOut size={18} /></button>
           </div>
         </div>
 
@@ -1396,7 +1430,7 @@ function ProfileView({ user, logout, onSaveProfile }) {
               </div>
             )}
             {isEditing && (
-              <Button onClick={saveProfile} variant="accent" className="w-full" disabled={saving}>
+              <Button onClick={saveProfile} variant="accent" haptic="success" className="w-full" disabled={saving}>
                 {saving ? <Loader2 className="animate-spin" /> : <Save size={16} />} Save Profile
               </Button>
             )}
@@ -1654,11 +1688,11 @@ function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile, onOpe
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={onOpenNotifications} className="pro-icon-button relative">
+          <button type="button" onClick={withHaptic(onOpenNotifications, 'selection')} className="pro-icon-button pressable relative">
             <Bell size={18} />
             {unreadCount > 0 && <span className="absolute -right-1 -top-1 h-5 min-w-5 rounded-full bg-red-500 px-1 text-[10px] font-black leading-5 text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
           </button>
-          <button onClick={logout} className="pro-icon-button text-red-600 bg-red-50 border-red-100 hover:bg-red-100"><LogOut size={18} /></button>
+          <button type="button" onClick={withHaptic(logout, 'warning')} className="pro-icon-button pressable text-red-600 bg-red-50 border-red-100 hover:bg-red-100"><LogOut size={18} /></button>
         </div>
         </div>
         <div className="grid grid-cols-2 gap-3 mt-5">
@@ -1683,7 +1717,7 @@ function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile, onOpe
       <div className="pro-card p-5 space-y-4">
         <div className="flex items-center justify-between gap-3">
           <SectionHeader eyebrow="Profile" title="Provider details" />
-          <button onClick={() => setProfileOpen(prev => !prev)} className="pro-icon-button">
+          <button type="button" onClick={() => { triggerHaptic('selection'); setProfileOpen(prev => !prev); }} className="pro-icon-button pressable">
             {profileOpen ? <X size={18} /> : <Edit3 size={18} />}
           </button>
         </div>
@@ -1696,8 +1730,8 @@ function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile, onOpe
             </div>
             <button
               type="button"
-              onClick={() => setProfileOpen(true)}
-              className="flex w-full items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-left text-sm font-black text-emerald-800 transition-colors hover:bg-emerald-100"
+              onClick={() => { triggerHaptic('selection'); setProfileOpen(true); }}
+              className="pressable flex w-full items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-left text-sm font-black text-emerald-800 transition-colors hover:bg-emerald-100"
             >
               <span className="inline-flex items-center gap-2"><Calendar size={16} /> Manage working dates</span>
               <ChevronRight size={17} />
@@ -1732,16 +1766,16 @@ function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile, onOpe
                   <button
                     type="button"
                     aria-label="Previous month"
-                    onClick={() => setCalendarMonth(prev => subtractMonths(prev, 1))}
-                    className="pro-icon-button h-9 w-9"
+                    onClick={withHaptic(() => setCalendarMonth(prev => subtractMonths(prev, 1)), 'selection')}
+                    className="pro-icon-button pressable h-9 w-9"
                   >
                     <ChevronLeft size={16} />
                   </button>
                   <button
                     type="button"
                     aria-label="Next month"
-                    onClick={() => setCalendarMonth(prev => addMonths(prev, 1))}
-                    className="pro-icon-button h-9 w-9"
+                    onClick={withHaptic(() => setCalendarMonth(prev => addMonths(prev, 1)), 'selection')}
+                    className="pro-icon-button pressable h-9 w-9"
                   >
                     <ChevronRight size={16} />
                   </button>
@@ -1775,6 +1809,7 @@ function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile, onOpe
                         type="button"
                         disabled={blocked}
                         onClick={() => {
+                          triggerHaptic('selection');
                           setSelectedDate(parseDateOnly(dateKey));
                           setCalendarMonth(parseDateOnly(dateKey));
                         }}
@@ -1803,8 +1838,8 @@ function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile, onOpe
                       <button
                         type="button"
                         title={`Remove ${slot}`}
-                        onClick={() => setDateSlots(prev => prev.filter(item => item !== slot))}
-                        className="rounded-md p-0.5 text-emerald-700 hover:bg-emerald-100"
+                        onClick={() => { triggerHaptic('selection'); setDateSlots(prev => prev.filter(item => item !== slot)); }}
+                        className="pressable rounded-md p-0.5 text-emerald-700 hover:bg-emerald-100"
                       >
                         <X size={13} />
                       </button>
@@ -1839,17 +1874,18 @@ function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile, onOpe
                     onClick={() => {
                       const nextSlot = normalizeSlotValue(newSlot);
                       if (!nextSlot) return;
+                      triggerHaptic('selection');
                       setDateSlots(prev => uniqueSlots([...prev, nextSlot]));
                       setNewSlot('');
                     }}
-                    className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-cyan-100 bg-cyan-50 text-cyan-700 hover:bg-cyan-100"
+                    className="pressable inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-cyan-100 bg-cyan-50 text-cyan-700 hover:bg-cyan-100"
                     title="Add time slot"
                   >
                     <Plus size={18} />
                   </button>
                 </div>
 
-                <Button onClick={saveSelectedDateSlots} variant="accent" className="w-full" disabled={savingSchedule || isPastDate(selectedDate)}>
+                <Button onClick={saveSelectedDateSlots} variant="accent" haptic="success" className="w-full" disabled={savingSchedule || isPastDate(selectedDate)}>
                   {savingSchedule ? <Loader2 className="animate-spin" /> : <Save size={16} />}
                   {dateSlots.length ? 'Publish Working Date' : 'Remove Date From Calendar'}
                 </Button>
@@ -1870,9 +1906,9 @@ function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile, onOpe
                       </div>
                       <button
                         type="button"
-                        onClick={() => removeWorkingDate(row.work_date)}
+                        onClick={withHaptic(() => removeWorkingDate(row.work_date), 'warning')}
                         disabled={savingSchedule}
-                        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50"
+                        className="pressable inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50"
                         title={`Remove ${shortDate(row.work_date)}`}
                       >
                         <Trash2 size={16} />
@@ -1884,7 +1920,7 @@ function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile, onOpe
 
             </div>
 
-            <Button onClick={saveDoctorProfile} variant="accent" className="w-full mt-6" disabled={savingProfile}>
+            <Button onClick={saveDoctorProfile} variant="accent" haptic="success" className="w-full mt-6" disabled={savingProfile}>
               {savingProfile ? <Loader2 className="animate-spin" /> : <Save size={16} />} Save Provider Profile
             </Button>
           </div>
@@ -1904,8 +1940,8 @@ function DoctorDashboard({ user, doctor, logout, showToast, onSaveProfile, onOpe
             </div>
             <AppointmentTimeline events={appointmentEvents[String(apt.id)] || []} limit={2} compact />
             <div className="flex gap-3">
-              <Button onClick={() => handleAction(apt.id, 'accept')} variant="accent" className="flex-1 py-3 text-sm shadow-none"><Check size={16}/> Accept</Button>
-              <Button onClick={() => handleAction(apt.id, 'reject')} variant="secondary" className="flex-1 py-3 text-sm"><X size={16}/> Decline</Button>
+              <Button onClick={() => handleAction(apt.id, 'accept')} variant="accent" haptic="success" className="flex-1 py-3 text-sm shadow-none"><Check size={16}/> Accept</Button>
+              <Button onClick={() => handleAction(apt.id, 'reject')} variant="secondary" haptic="warning" className="flex-1 py-3 text-sm"><X size={16}/> Decline</Button>
             </div>
           </div>
         ))}
@@ -2174,11 +2210,11 @@ function AdminDashboard({
             <h1 className="text-3xl font-black flex items-center gap-2 text-slate-950"><Shield className="text-cyan-600"/> Admin</h1>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={onOpenNotifications} className="pro-icon-button relative">
+            <button type="button" onClick={withHaptic(onOpenNotifications, 'selection')} className="pro-icon-button pressable relative">
               <Bell size={18} />
               {unreadCount > 0 && <span className="absolute -right-1 -top-1 h-5 min-w-5 rounded-full bg-red-500 px-1 text-[10px] font-black leading-5 text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
             </button>
-            <button onClick={logout} className="pro-icon-button text-red-600 bg-red-50 border-red-100 hover:bg-red-100"><LogOut size={18} /></button>
+            <button type="button" onClick={withHaptic(logout, 'warning')} className="pro-icon-button pressable text-red-600 bg-red-50 border-red-100 hover:bg-red-100"><LogOut size={18} /></button>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3 mt-5">
@@ -2206,9 +2242,9 @@ function AdminDashboard({
             </label>
             <button
               type="button"
-              onClick={savePlatformFee}
+              onClick={withHaptic(savePlatformFee, 'success')}
               disabled={savingFee}
-              className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg bg-slate-950 px-4 text-xs font-black text-white transition-colors hover:bg-cyan-700 disabled:opacity-50"
+              className="pressable inline-flex h-10 shrink-0 items-center justify-center rounded-lg bg-slate-950 px-4 text-xs font-black text-white transition-colors hover:bg-cyan-700 disabled:opacity-50"
             >
               {savingFee ? <Loader2 size={16} className="animate-spin" /> : 'Save'}
             </button>
@@ -2267,8 +2303,8 @@ function AdminDashboard({
               <div className="col-span-2 rounded-lg border border-violet-100 bg-white/85 p-3">Clinic<br/><span className="text-sm font-black">{doctor.clinic_name || doctor.location || 'Not set'}</span></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Button onClick={() => reviewProvider(doctor, 'approved')} variant="accent" className="py-3 text-sm shadow-none"><Check size={16}/> Approve</Button>
-              <Button onClick={() => reviewProvider(doctor, 'rejected')} variant="secondary" className="py-3 text-sm"><X size={16}/> Reject</Button>
+              <Button onClick={() => reviewProvider(doctor, 'approved')} variant="accent" haptic="success" className="py-3 text-sm shadow-none"><Check size={16}/> Approve</Button>
+              <Button onClick={() => reviewProvider(doctor, 'rejected')} variant="secondary" haptic="warning" className="py-3 text-sm"><X size={16}/> Reject</Button>
             </div>
           </div>
         ))}
@@ -2324,8 +2360,8 @@ function AdminDashboard({
                 className="w-full rounded-lg border border-amber-100 bg-white px-3 py-3 text-sm font-bold text-slate-800 outline-none focus:border-amber-300 focus:ring-4 focus:ring-amber-100"
               />
               <div className="grid grid-cols-2 gap-3">
-                <Button onClick={() => verifyPayment(appointment)} variant="accent" className="py-3 text-sm shadow-none" disabled={!review.ready}><Check size={16}/> Verify</Button>
-                <Button onClick={() => rejectPayment(appointment)} variant="secondary" className="py-3 text-sm"><X size={16}/> Reject</Button>
+                <Button onClick={() => verifyPayment(appointment)} variant="accent" haptic="success" className="py-3 text-sm shadow-none" disabled={!review.ready}><Check size={16}/> Verify</Button>
+                <Button onClick={() => rejectPayment(appointment)} variant="secondary" haptic="warning" className="py-3 text-sm"><X size={16}/> Reject</Button>
               </div>
             </div>
           );
@@ -2337,9 +2373,9 @@ function AdminDashboard({
           <SectionHeader eyebrow="Settlement" title="Doctor payouts" />
           <button
             type="button"
-            onClick={() => generateAdminReport(payoutRows)}
+            onClick={withHaptic(() => generateAdminReport(payoutRows), 'success')}
             disabled={!payoutRows.length}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 transition-colors hover:border-cyan-300 hover:text-cyan-700 disabled:opacity-40"
+            className="pressable rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 transition-colors hover:border-cyan-300 hover:text-cyan-700 disabled:opacity-40"
           >
             Report
           </button>
@@ -2393,13 +2429,13 @@ function AdminDashboard({
                       type="button"
                       aria-label={`Copy UPI for ${appointment.doctor_name}`}
                       title={`Copy UPI for ${appointment.doctor_name}`}
-                      onClick={() => copyDoctorUpi(doctorLookup.get(String(appointment.doctor_id))?.upi_id)}
-                      className="rounded-lg bg-slate-50 px-3 py-2 text-xs font-black text-slate-600 hover:bg-cyan-50 hover:text-cyan-700"
+                      onClick={withHaptic(() => copyDoctorUpi(doctorLookup.get(String(appointment.doctor_id))?.upi_id), 'selection')}
+                      className="pressable rounded-lg bg-slate-50 px-3 py-2 text-xs font-black text-slate-600 hover:bg-cyan-50 hover:text-cyan-700"
                     >
                       <Copy size={14} />
                     </button>
                   )}
-                  <button onClick={() => markPayoutPaid(appointment)} className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100">
+                  <button type="button" onClick={withHaptic(() => markPayoutPaid(appointment), 'success')} className="pressable rounded-lg bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100">
                     Paid
                   </button>
                 </div>
@@ -2421,12 +2457,12 @@ function AdminDashboard({
               <div className="flex shrink-0 items-center gap-2">
                 <Badge type={providerStatusTone(providerStatus(doc))}>{providerStatusText(providerStatus(doc))}</Badge>
                 {providerStatus(doc) !== 'approved' && (
-                  <button onClick={() => reviewProvider(doc, 'approved')} className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100">
+                  <button type="button" onClick={withHaptic(() => reviewProvider(doc, 'approved'), 'success')} className="pressable rounded-lg bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700 hover:bg-emerald-100">
                     Approve
                   </button>
                 )}
                 {providerStatus(doc) === 'approved' && (
-                  <button onClick={() => reviewProvider(doc, 'suspended')} className="rounded-lg bg-red-50 px-3 py-2 text-xs font-black text-red-700 hover:bg-red-100">
+                  <button type="button" onClick={withHaptic(() => reviewProvider(doc, 'suspended'), 'warning')} className="pressable rounded-lg bg-red-50 px-3 py-2 text-xs font-black text-red-700 hover:bg-red-100">
                     Suspend
                   </button>
                 )}
@@ -2455,11 +2491,11 @@ function NotificationCenter({ open, notifications, onClose, onMarkRead, onMarkAl
           </div>
           <div className="flex items-center gap-2">
             {unreadCount > 0 && (
-              <button onClick={onMarkAllRead} className="rounded-lg bg-cyan-50 px-3 py-2 text-xs font-black text-cyan-700 hover:bg-cyan-100">
+              <button type="button" onClick={withHaptic(onMarkAllRead, 'success')} className="pressable rounded-lg bg-cyan-50 px-3 py-2 text-xs font-black text-cyan-700 hover:bg-cyan-100">
                 Mark all
               </button>
             )}
-            <button onClick={onClose} className="pro-icon-button h-10 w-10"><X size={17} /></button>
+            <button type="button" onClick={withHaptic(onClose, 'selection')} className="pro-icon-button pressable h-10 w-10"><X size={17} /></button>
           </div>
         </div>
 
@@ -2479,8 +2515,8 @@ function NotificationCenter({ open, notifications, onClose, onMarkRead, onMarkAl
               {canEnableDeviceNotifications && (
                 <button
                   type="button"
-                  onClick={onEnableDeviceNotifications}
-                  className="shrink-0 rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white hover:bg-cyan-700"
+                  onClick={withHaptic(onEnableDeviceNotifications, 'success')}
+                  className="pressable shrink-0 rounded-lg bg-slate-950 px-3 py-2 text-xs font-black text-white hover:bg-cyan-700"
                 >
                   Enable
                 </button>
@@ -2497,8 +2533,8 @@ function NotificationCenter({ open, notifications, onClose, onMarkRead, onMarkAl
             <button
               key={item.id}
               type="button"
-              onClick={() => onMarkRead(item)}
-              className={`w-full rounded-lg border p-4 text-left transition-all ${
+              onClick={() => { triggerHaptic('selection'); onMarkRead(item); }}
+              className={`pressable w-full rounded-lg border p-4 text-left transition-all ${
                 item.read_at
                   ? 'border-slate-100 bg-slate-50 text-slate-600'
                   : 'border-cyan-100 bg-cyan-50 text-slate-900 shadow-sm'
@@ -2546,6 +2582,7 @@ function MobileCommandMenu({
       ];
 
   const runAction = (action) => {
+    triggerHaptic('selection');
     action();
     onClose();
   };
@@ -2556,7 +2593,7 @@ function MobileCommandMenu({
         <button
           type="button"
           aria-label="Close menu"
-          onClick={onClose}
+          onClick={withHaptic(onClose, 'selection')}
           className="pointer-events-auto absolute inset-0 bg-slate-950/35 backdrop-blur-sm animate-in fade-in"
         />
       )}
@@ -2564,8 +2601,8 @@ function MobileCommandMenu({
       <button
         type="button"
         aria-label="Open menu"
-        onClick={onToggle}
-        className="pointer-events-auto absolute left-5 top-5 inline-flex h-12 w-12 items-center justify-center rounded-lg border border-slate-200 bg-white/95 text-slate-950 shadow-[0_18px_45px_rgba(15,23,42,0.18)] backdrop-blur-xl transition-transform active:scale-95"
+        onClick={withHaptic(onToggle, 'selection')}
+        className="pointer-events-auto pressable absolute left-5 top-5 inline-flex h-12 w-12 items-center justify-center rounded-lg border border-slate-200 bg-white/95 text-slate-950 shadow-[0_18px_45px_rgba(15,23,42,0.18)] backdrop-blur-xl transition-transform"
       >
         {open ? <X size={20} /> : <Menu size={21} />}
       </button>
@@ -2577,7 +2614,7 @@ function MobileCommandMenu({
               key={item.id}
               type="button"
               onClick={() => runAction(item.action)}
-              className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-black transition-colors ${
+              className={`pressable flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-black transition-colors ${
                 view === item.id ? 'bg-slate-950 text-white' : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-700'
               }`}
             >
@@ -2588,7 +2625,7 @@ function MobileCommandMenu({
           <button
             type="button"
             onClick={() => runAction(onOpenNotifications)}
-            className="relative flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-black text-slate-700 transition-colors hover:bg-cyan-50 hover:text-cyan-700"
+            className="pressable relative flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-black text-slate-700 transition-colors hover:bg-cyan-50 hover:text-cyan-700"
           >
             <Bell size={18} />
             Notifications
@@ -2597,7 +2634,7 @@ function MobileCommandMenu({
           <button
             type="button"
             onClick={() => runAction(onLogout)}
-            className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-black text-red-600 transition-colors hover:bg-red-50"
+            className="pressable flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-black text-red-600 transition-colors hover:bg-red-50"
           >
             <LogOut size={18} />
             Logout
@@ -2650,6 +2687,7 @@ export default function App() {
   const isCompactNav = viewport.width < 560 || (viewport.width / Math.max(viewport.height, 1)) < 0.72;
 
   const showToast = useCallback((msg, type='success') => {
+     triggerHaptic(type === 'error' ? 'error' : type === 'info' ? 'selection' : 'success');
      setNotification({msg, type});
      setTimeout(() => setNotification(null), 3500);
   }, []);
@@ -3302,7 +3340,7 @@ export default function App() {
 
                  {!isCompactNav && !['detail', 'success', 'login'].includes(view) && (
                     <div className="absolute bottom-0 w-full px-5 pb-5 pt-2 z-40 pointer-events-none">
-                       <div className="bg-white/95 backdrop-blur-2xl border border-slate-200 p-2 rounded-xl flex justify-around items-center shadow-[0_20px_50px_rgba(15,23,42,0.14)] pointer-events-auto">
+                       <div className="nav-glass bg-white/95 backdrop-blur-2xl border border-slate-200 p-2 rounded-xl flex justify-around items-center shadow-[0_20px_50px_rgba(15,23,42,0.14)] pointer-events-auto">
                          {[
                            { id: 'home', icon: Zap, label: 'Home' },
                            { id: 'search', icon: Search, label: 'Search' },
@@ -3311,9 +3349,10 @@ export default function App() {
                            { id: 'alerts', icon: Bell, label: 'Alerts', action: () => setNotificationsOpen(true) }
                          ].map(item => (
                            <button
+                             type="button"
                              key={item.id}
-                             onClick={() => item.action ? item.action() : setView(item.id)}
-                             className={`relative flex flex-col items-center gap-1 w-16 py-2 rounded-lg transition-all duration-300 ${view === item.id ? 'text-white bg-slate-950 shadow-md shadow-slate-900/15' : 'text-slate-500 hover:text-cyan-700 hover:bg-cyan-50'}`}
+                             onClick={() => { triggerHaptic('selection'); item.action ? item.action() : setView(item.id); }}
+                             className={`pressable relative flex flex-col items-center gap-1 w-16 py-2 rounded-lg transition-all duration-300 ${view === item.id ? 'text-white bg-slate-950 shadow-md shadow-slate-900/15' : 'text-slate-500 hover:text-cyan-700 hover:bg-cyan-50'}`}
                            >
                              <item.icon size={22} strokeWidth={view === item.id ? 2.5 : 2} className={view === item.id ? 'animate-in zoom-in-75 duration-200' : ''} />
                              {item.id === 'alerts' && unreadNotificationCount > 0 && <span className="absolute right-2 top-1 h-4 min-w-4 rounded-full bg-red-500 px-1 text-[9px] font-black leading-4 text-white">{unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}</span>}
