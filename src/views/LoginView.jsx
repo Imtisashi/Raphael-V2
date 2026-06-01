@@ -234,8 +234,8 @@ export default function LoginView({
   };
 
   return (
-    <div className="auth-screen min-h-screen w-full overflow-y-auto px-5 py-8 font-sans">
-      <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md flex-col justify-center">
+    <div className="auth-screen app-scroll-region h-full min-h-0 w-full overflow-y-auto px-5 py-8 font-sans">
+      <div className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-md flex-col justify-center">
         <div className="login-brand-panel mb-8 text-center view-panel">
           {appIcon && (
             <img

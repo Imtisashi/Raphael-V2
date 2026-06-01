@@ -961,7 +961,7 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
   const selectedDateIsOpen = dateStr && doctorCanBookDate(doctor, dateStr);
 
   return (
-    <div className="h-full flex flex-col app-screen">
+    <div className="relative h-full min-h-0 flex flex-col overflow-hidden app-screen">
       <div className="relative shrink-0 px-6 pt-6 pb-7 overflow-hidden pro-detail-hero text-white">
         <button type="button" onClick={withHaptic(() => { setSelectedSlot(null); setView('search'); }, 'selection')} className="pressable relative z-20 p-2.5 bg-white/15 hover:bg-white/25 backdrop-blur-md rounded-lg text-white transition-colors border border-white/20"><ChevronLeft size={20} /></button>
 
@@ -992,7 +992,7 @@ function DoctorDetailView({ doctor, setView, selectedSlot, setSelectedSlot, sele
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-6 pb-36 space-y-5">
+      <div className="flex-1 min-h-0 overflow-y-auto app-scroll-region px-5 py-6 pb-36 space-y-5">
         <div className="pro-card p-5">
           <SectionHeader eyebrow="About" title="Specialist profile" />
           <p className="text-slate-600 text-sm leading-relaxed font-semibold mt-3">{doctor.bio || "This provider has not added profile details yet."}</p>
@@ -3290,7 +3290,7 @@ export default function App() {
   }
 
   return (
-     <div className="min-h-screen app-canvas font-sans text-slate-900 flex justify-center selection:bg-cyan-100 relative">
+     <div className="h-[100dvh] min-h-0 app-canvas font-sans text-slate-900 flex justify-center selection:bg-cyan-100 relative overflow-hidden">
         {notification && (
           <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] bg-white/95 backdrop-blur-xl border border-slate-200 text-slate-900 px-5 py-3 rounded-lg shadow-[0_18px_50px_rgba(15,23,42,0.18)] flex items-center gap-3 animate-in slide-in-from-top-10 fade-in duration-300">
             {notification.type === 'error' ? <X size={18} className="text-red-500" /> : <CheckCircle size={18} className={notification.type === 'info' ? "text-sky-500" : "text-emerald-500"} />}
@@ -3298,7 +3298,7 @@ export default function App() {
           </div>
         )}
 
-        <div className={`w-full ${isCompactNav ? 'max-w-none' : 'sm:max-w-[430px]'} bg-white min-h-screen sm:min-h-[calc(100vh-2rem)] ${isCompactNav ? '' : 'sm:my-4'} relative app-frame overflow-hidden flex flex-col ${isCompactNav ? 'aspect-compact' : ''}`}>
+        <div className={`w-full ${isCompactNav ? 'max-w-none' : 'sm:max-w-[430px]'} bg-white h-[100dvh] min-h-0 sm:h-[calc(100dvh-2rem)] ${isCompactNav ? '' : 'sm:my-4'} relative app-frame overflow-hidden flex flex-col ${isCompactNav ? 'aspect-compact' : ''}`}>
            {view === 'login' && (
              <LoginScreen
                onLogin={handleLogin}
@@ -3314,12 +3314,20 @@ export default function App() {
                appIcon={APP_ICON}
              />
            )}
-           {view === 'admin' && <AdminDashboard user={user} logout={handleLogout} doctors={doctors} showToast={showToast} onOpenNotifications={() => setNotificationsOpen(true)} unreadCount={unreadNotificationCount} onDoctorsChanged={fetchDoctors} platformFeePercent={platformFeePercent} onPlatformFeeChanged={setPlatformFeePercent} />}
-           {view === 'doctor_dashboard' && <DoctorDashboard user={user} doctor={doctorProfile} logout={handleLogout} showToast={showToast} onSaveProfile={handleSaveProfile} onOpenNotifications={() => setNotificationsOpen(true)} unreadCount={unreadNotificationCount} onAvailabilityChanged={fetchDoctors} />}
+           {view === 'admin' && (
+             <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide app-scroll-region view-panel">
+               <AdminDashboard user={user} logout={handleLogout} doctors={doctors} showToast={showToast} onOpenNotifications={() => setNotificationsOpen(true)} unreadCount={unreadNotificationCount} onDoctorsChanged={fetchDoctors} platformFeePercent={platformFeePercent} onPlatformFeeChanged={setPlatformFeePercent} />
+             </div>
+           )}
+           {view === 'doctor_dashboard' && (
+             <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide app-scroll-region view-panel">
+               <DoctorDashboard user={user} doctor={doctorProfile} logout={handleLogout} showToast={showToast} onSaveProfile={handleSaveProfile} onOpenNotifications={() => setNotificationsOpen(true)} unreadCount={unreadNotificationCount} onAvailabilityChanged={fetchDoctors} />
+             </div>
+           )}
            
            {['home', 'search', 'detail', 'dashboard', 'profile', 'success'].includes(view) && user && user.role === 'patient' && (
-              <div className="flex-1 flex flex-col h-full overflow-hidden relative">
-                 <div key={view} className="flex-1 overflow-y-auto scrollbar-hide view-panel">
+              <div className="flex-1 min-h-0 flex flex-col h-full overflow-hidden relative">
+                 <div key={view} className="flex-1 min-h-0 overflow-y-auto scrollbar-hide app-scroll-region view-panel">
                     {view === 'home' && <HomeView setView={setView} setSearchQuery={setSearchQuery} doctors={doctors} onSelectDoctor={openDoctorDetail} onOpenNotifications={() => setNotificationsOpen(true)} unreadCount={unreadNotificationCount} />}
                     {view === 'search' && <SearchView searchQuery={searchQuery} setSearchQuery={setSearchQuery} doctors={doctors} setView={setView} onSelectDoctor={openDoctorDetail} activeCategory={activeCategory} setActiveCategory={setActiveCategory} />}
                     {view === 'detail' && <DoctorDetailView key={selectedDoctor?.id || 'detail'} doctor={selectedDoctor} setView={setView} selectedSlot={selectedSlot} setSelectedSlot={setSelectedSlot} selectedDate={selectedDate} setSelectedDate={setSelectedDate} handleBook={initiateBooking} />}

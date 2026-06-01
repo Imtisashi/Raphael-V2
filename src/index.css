@@ -4,6 +4,7 @@
 
 @layer base {
     html {
+        height: 100%;
         scroll-behavior: smooth;
         -webkit-text-size-adjust: 100%;
         -webkit-tap-highlight-color: transparent;
@@ -15,12 +16,14 @@
         min-height: 100%;
         overflow-x: hidden;
         background: #f8fafc;
-        overscroll-behavior: none;
+        overscroll-behavior-x: none;
+        overscroll-behavior-y: auto;
         text-rendering: optimizeLegibility;
     }
 
     #root {
         width: 100%;
+        height: 100%;
         max-width: 100%;
         overflow-x: hidden;
     }
@@ -55,18 +58,27 @@
     }
 
     .app-frame {
+        height: 100dvh;
+        max-height: 100dvh;
+        min-height: 0;
         border: 1px solid rgba(15, 23, 42, 0.08);
         box-shadow:
             0 34px 100px -42px rgba(15, 23, 42, 0.48),
             0 0 0 1px rgba(255, 255, 255, 0.72) inset;
         isolation: isolate;
-        contain: layout paint;
+        contain: layout style;
     }
 
     @media (min-width: 640px) {
         .app-frame {
+            height: calc(100dvh - 2rem);
+            max-height: calc(100dvh - 2rem);
             border-radius: 24px;
         }
+    }
+
+    .app-frame > * {
+        min-height: 0;
     }
 
     .app-screen {
@@ -95,7 +107,15 @@
     }
 
     .view-panel {
+        min-height: 0;
         animation: app-view-in 260ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .app-scroll-region {
+        overflow-y: auto;
+        overscroll-behavior-y: contain;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-y;
     }
 
     .pro-card::after,
@@ -476,10 +496,13 @@
 .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
 }
 
 .aspect-compact {
-    min-height: 100vh;
+    height: 100dvh;
+    max-height: 100dvh;
+    min-height: 0;
     border-radius: 0;
 }
 
