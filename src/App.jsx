@@ -4,15 +4,17 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { PushNotifications } from '@capacitor/push-notifications';
 import {
   Search, Calendar, Clock, MapPin, Star, Shield, Activity, User, CheckCircle, X,
-  ArrowRight, Loader2, Check, LogOut, Menu, Plus, Trash2,
+  ArrowRight, Loader2, Check, LogOut, Plus, Trash2,
   ChevronLeft, IndianRupee, Zap, Sparkles, ChevronRight,
   HeartPulse, Stethoscope, Wallet, TrendingUp, Users, ClipboardCheck, Bell,
   PhoneCall, MapPinned, BadgeCheck, Timer, ArrowUpRight, Brain, Bone, Eye,
   Edit3, Save, AlertTriangle, FileText, Copy
 } from 'lucide-react';
+import AppShell from './components/AppShell';
 import { hasSupabaseConfig, supabase, supabaseConfigStatus } from './lib/supabaseClient';
 import { generateAdminReport, generateReceipt } from './utils/pdfGenerator';
 import { triggerHaptic, withHaptic } from './utils/haptics';
+import { routeForRole } from './utils/navigation';
 import LoginScreen from './views/LoginView';
 import appIcon from '../icons/icon-128.webp';
 
@@ -116,6 +118,14 @@ const formatDate = (value) => {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+const browserTimeZone = () => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata';
+  } catch {
+    return 'Asia/Kolkata';
+  }
 };
 
 const isSameDay = (date1, date2) => formatDate(date1) === formatDate(date2);
@@ -459,12 +469,6 @@ const withTimeout = (promise, timeoutMs) => (
     promise.then(resolve, reject).finally(() => window.clearTimeout(timer));
   })
 );
-
-const routeForRole = (role) => {
-  if (role === 'admin') return 'admin';
-  if (role === 'doctor') return 'doctor_dashboard';
-  return 'home';
-};
 
 const profileFromAuthUser = (authUser) => ({
   id: authUser.id,
@@ -2556,95 +2560,6 @@ function NotificationCenter({ open, notifications, onClose, onMarkRead, onMarkAl
   );
 }
 
-function MobileCommandMenu({
-  open,
-  role,
-  view,
-  setView,
-  onToggle,
-  onClose,
-  onOpenNotifications,
-  onLogout,
-  unreadCount = 0,
-}) {
-  if (!role) return null;
-
-  const roleHome = routeForRole(role);
-  const items = role === 'patient'
-    ? [
-        { id: 'home', icon: Zap, label: 'Home', action: () => setView('home') },
-        { id: 'search', icon: Search, label: 'Search', action: () => setView('search') },
-        { id: 'dashboard', icon: Calendar, label: 'Visits', action: () => setView('dashboard') },
-        { id: 'profile', icon: User, label: 'Profile', action: () => setView('profile') },
-      ]
-    : [
-        { id: roleHome, icon: role === 'admin' ? Shield : Stethoscope, label: role === 'admin' ? 'Admin' : 'Provider', action: () => setView(roleHome) },
-      ];
-
-  const runAction = (action) => {
-    triggerHaptic('selection');
-    action();
-    onClose();
-  };
-
-  return (
-    <div className="pointer-events-none absolute inset-0 z-[70]">
-      {open && (
-        <button
-          type="button"
-          aria-label="Close menu"
-          onClick={withHaptic(onClose, 'selection')}
-          className="pointer-events-auto absolute inset-0 bg-slate-950/35 backdrop-blur-sm animate-in fade-in"
-        />
-      )}
-
-      <button
-        type="button"
-        aria-label="Open menu"
-        onClick={withHaptic(onToggle, 'selection')}
-        className="pointer-events-auto pressable absolute left-5 top-5 inline-flex h-12 w-12 items-center justify-center rounded-lg border border-slate-200 bg-white/95 text-slate-950 shadow-[0_18px_45px_rgba(15,23,42,0.18)] backdrop-blur-xl transition-transform"
-      >
-        {open ? <X size={20} /> : <Menu size={21} />}
-      </button>
-
-      {open && (
-        <div className="pointer-events-auto absolute left-5 right-5 top-20 rounded-lg border border-slate-200 bg-white p-2 shadow-[0_28px_80px_rgba(15,23,42,0.26)] view-panel">
-          {items.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => runAction(item.action)}
-              className={`pressable flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-black transition-colors ${
-                view === item.id ? 'bg-slate-950 text-white' : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-700'
-              }`}
-            >
-              <item.icon size={18} />
-              {item.label}
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => runAction(onOpenNotifications)}
-            className="pressable relative flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-black text-slate-700 transition-colors hover:bg-cyan-50 hover:text-cyan-700"
-          >
-            <Bell size={18} />
-            Notifications
-            {unreadCount > 0 && <span className="ml-auto rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-black text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
-          </button>
-          <button
-            type="button"
-            onClick={() => runAction(onLogout)}
-            className="pressable flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-black text-red-600 transition-colors hover:bg-red-50"
-          >
-            <LogOut size={18} />
-            Logout
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ==========================================
 // MAIN APP ROUTER & NAV
 // ==========================================
@@ -3156,6 +3071,7 @@ export default function App() {
            p_doctor_id: selectedDoctor.id,
            p_slot: selectedSlot,
            p_appointment_date: formatDate(selectedDate),
+           p_patient_time_zone: browserTimeZone(),
          });
          if (error) throw error;
          showToast("Booking request sent successfully!", "success");
@@ -3290,15 +3206,30 @@ export default function App() {
   }
 
   return (
-     <div className="h-[100dvh] min-h-0 app-canvas font-sans text-slate-900 flex justify-center selection:bg-cyan-100 relative overflow-hidden">
-        {notification && (
-          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] bg-white/95 backdrop-blur-xl border border-slate-200 text-slate-900 px-5 py-3 rounded-lg shadow-[0_18px_50px_rgba(15,23,42,0.18)] flex items-center gap-3 animate-in slide-in-from-top-10 fade-in duration-300">
-            {notification.type === 'error' ? <X size={18} className="text-red-500" /> : <CheckCircle size={18} className={notification.type === 'info' ? "text-sky-500" : "text-emerald-500"} />}
-            <span className="text-sm font-bold">{notification.msg}</span>
-          </div>
-        )}
-
-        <div className={`w-full ${isCompactNav ? 'max-w-none' : 'sm:max-w-[430px]'} bg-white h-[100dvh] min-h-0 sm:h-[calc(100dvh-2rem)] ${isCompactNav ? '' : 'sm:my-4'} relative app-frame overflow-hidden flex flex-col ${isCompactNav ? 'aspect-compact' : ''}`}>
+     <AppShell
+       notification={notification}
+       isCompactNav={isCompactNav}
+       view={view}
+       user={user}
+       mobileMenuOpen={mobileMenuOpen}
+       setView={setView}
+       onToggleMobileMenu={() => setMobileMenuOpen(prev => !prev)}
+       onCloseMobileMenu={() => setMobileMenuOpen(false)}
+       onOpenNotifications={() => setNotificationsOpen(true)}
+       onLogout={handleLogout}
+       unreadNotificationCount={unreadNotificationCount}
+       notificationCenter={user ? (
+         <NotificationCenter
+           open={notificationsOpen}
+           notifications={notifications}
+           onClose={() => setNotificationsOpen(false)}
+           onMarkRead={markNotificationRead}
+           onMarkAllRead={markAllNotificationsRead}
+           notificationPermission={notificationPermission}
+           onEnableDeviceNotifications={enableDeviceNotifications}
+         />
+       ) : null}
+     >
            {view === 'login' && (
              <LoginScreen
                onLogin={handleLogin}
@@ -3346,59 +3277,8 @@ export default function App() {
                     )}
                  </div>
 
-                 {!isCompactNav && !['detail', 'success', 'login'].includes(view) && (
-                    <div className="absolute bottom-0 w-full px-5 pb-5 pt-2 z-40 pointer-events-none">
-                       <div className="nav-glass bg-white/95 backdrop-blur-2xl border border-slate-200 p-2 rounded-xl flex justify-around items-center shadow-[0_20px_50px_rgba(15,23,42,0.14)] pointer-events-auto">
-                         {[
-                           { id: 'home', icon: Zap, label: 'Home' },
-                           { id: 'search', icon: Search, label: 'Search' },
-                           { id: 'dashboard', icon: Calendar, label: 'Visits' },
-                           { id: 'profile', icon: User, label: 'Profile' },
-                           { id: 'alerts', icon: Bell, label: 'Alerts', action: () => setNotificationsOpen(true) }
-                         ].map(item => (
-                           <button
-                             type="button"
-                             key={item.id}
-                             onClick={() => { triggerHaptic('selection'); item.action ? item.action() : setView(item.id); }}
-                             className={`pressable relative flex flex-col items-center gap-1 w-16 py-2 rounded-lg transition-all duration-300 ${view === item.id ? 'text-white bg-slate-950 shadow-md shadow-slate-900/15' : 'text-slate-500 hover:text-cyan-700 hover:bg-cyan-50'}`}
-                           >
-                             <item.icon size={22} strokeWidth={view === item.id ? 2.5 : 2} className={view === item.id ? 'animate-in zoom-in-75 duration-200' : ''} />
-                             {item.id === 'alerts' && unreadNotificationCount > 0 && <span className="absolute right-2 top-1 h-4 min-w-4 rounded-full bg-red-500 px-1 text-[9px] font-black leading-4 text-white">{unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}</span>}
-                             <span className="text-[9px] font-extrabold uppercase">{item.label}</span>
-                           </button>
-                         ))}
-                       </div>
-                    </div>
-                 )}
               </div>
            )}
-           {user && (
-             <>
-             {isCompactNav && view !== 'login' && (
-               <MobileCommandMenu
-                 open={mobileMenuOpen}
-                 role={user.role}
-                 view={view}
-                 setView={setView}
-                 onToggle={() => setMobileMenuOpen(prev => !prev)}
-                 onClose={() => setMobileMenuOpen(false)}
-                 onOpenNotifications={() => setNotificationsOpen(true)}
-                 onLogout={handleLogout}
-                 unreadCount={unreadNotificationCount}
-               />
-             )}
-             <NotificationCenter
-               open={notificationsOpen}
-               notifications={notifications}
-               onClose={() => setNotificationsOpen(false)}
-               onMarkRead={markNotificationRead}
-               onMarkAllRead={markAllNotificationsRead}
-               notificationPermission={notificationPermission}
-               onEnableDeviceNotifications={enableDeviceNotifications}
-             />
-             </>
-           )}
-        </div>
-     </div>
+     </AppShell>
   );
 }

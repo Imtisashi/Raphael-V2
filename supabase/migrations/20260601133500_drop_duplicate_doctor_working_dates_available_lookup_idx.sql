@@ -1,0 +1,1 @@
+drop index if exists public.doctor_working_dates_available_lookup_idx;

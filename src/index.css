@@ -377,6 +377,74 @@
             linear-gradient(135deg, rgba(255, 255, 255, 0.35) 25%, transparent 25%) 0 0 / 14px 14px,
             linear-gradient(315deg, rgba(255, 255, 255, 0.22) 25%, transparent 25%) 0 0 / 14px 14px;
     }
+
+    html.dark .app-canvas {
+        background:
+            linear-gradient(115deg, rgba(6, 182, 212, 0.14), transparent 30%),
+            linear-gradient(245deg, rgba(16, 185, 129, 0.12), transparent 30%),
+            linear-gradient(135deg, #020617 0%, #09111f 42%, #06131b 100%),
+            linear-gradient(90deg, rgba(34, 211, 238, 0.05) 1px, transparent 1px),
+            linear-gradient(0deg, rgba(52, 211, 153, 0.045) 1px, transparent 1px);
+        background-size: auto, auto, auto, 36px 36px, 36px 36px;
+    }
+
+    html.dark .app-frame {
+        border-color: rgba(148, 163, 184, 0.22);
+        box-shadow:
+            0 34px 100px -42px rgba(0, 0, 0, 0.76),
+            0 0 0 1px rgba(148, 163, 184, 0.12) inset;
+    }
+
+    html.dark .app-screen {
+        background:
+            linear-gradient(180deg, rgba(2, 6, 23, 0.98) 0%, rgba(8, 17, 30, 0.99) 48%, rgba(6, 38, 48, 0.66) 100%);
+    }
+
+    html.dark .pro-card,
+    html.dark .pro-auth-card,
+    html.dark .auth-form-surface,
+    html.dark .pro-command-bar,
+    html.dark .nav-glass,
+    html.dark .mobile-menu-surface,
+    html.dark .app-shell-toast {
+        border-color: rgba(148, 163, 184, 0.24);
+        background:
+            linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(8, 17, 30, 0.92)),
+            rgba(2, 6, 23, 0.92);
+        box-shadow:
+            0 18px 52px -34px rgba(0, 0, 0, 0.78),
+            0 1px 0 rgba(148, 163, 184, 0.14) inset;
+    }
+
+    html.dark .pro-card:hover {
+        border-color: rgba(103, 232, 249, 0.42);
+        box-shadow:
+            0 24px 64px -36px rgba(6, 182, 212, 0.32),
+            0 1px 0 rgba(148, 163, 184, 0.16) inset;
+    }
+
+    html.dark .pro-home-hero {
+        background:
+            linear-gradient(150deg, #07111f 0%, #082f49 34%, #06343d 68%, #052e1b 100%);
+        border-bottom-color: rgba(148, 163, 184, 0.2);
+    }
+
+    html.dark .pro-home-hero::before {
+        opacity: 0.36;
+    }
+
+    html.dark .quick-chip,
+    html.dark .pro-icon-button {
+        border-color: rgba(148, 163, 184, 0.22);
+        background: rgba(15, 23, 42, 0.76);
+        color: #bae6fd;
+    }
+
+    html.dark .quick-chip:hover,
+    html.dark .pro-icon-button:hover {
+        background: rgba(8, 47, 73, 0.72);
+        color: #67e8f9;
+    }
 }
 
 @keyframes app-view-in {
@@ -541,6 +609,47 @@
     position: relative;
     border: 1px solid #e2e8f0;
     min-width: 0;
+}
+
+html.dark .calendar-day {
+    background: #0f172a;
+    color: #cbd5e1;
+    border-color: #1e293b;
+    box-shadow: 0 10px 22px -20px rgba(0, 0, 0, 0.72);
+}
+
+html.dark .calendar-day:hover:not(:disabled) {
+    border-color: #22d3ee;
+    background: #083344;
+}
+
+html.dark .calendar-day.selected {
+    background: #22d3ee;
+    border-color: #22d3ee;
+    color: #082f49;
+}
+
+html.dark .calendar-day.today {
+    border-color: #2dd4bf;
+    color: #99f6e4;
+}
+
+html.dark .calendar-day.available {
+    background: rgba(6, 78, 59, 0.68);
+    border-color: rgba(52, 211, 153, 0.52);
+    color: #a7f3d0;
+}
+
+html.dark .calendar-day.available:hover:not(:disabled) {
+    background: rgba(4, 120, 87, 0.74);
+    border-color: #34d399;
+}
+
+html.dark .calendar-day.blocked,
+html.dark .calendar-day:disabled {
+    background: rgba(15, 23, 42, 0.72);
+    color: #475569;
+    border-color: rgba(30, 41, 59, 0.92);
 }
 
 .calendar-day:hover:not(:disabled) {
