@@ -44,6 +44,11 @@ export default function App() {
   const [selectedDoctor, setSelectedDoctor] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const viewRef = React.useRef(view);
+  const selectedDoctorRef = React.useRef(selectedDoctor);
+
+  useEffect(() => { viewRef.current = view; }, [view]);
+  useEffect(() => { selectedDoctorRef.current = selectedDoctor; }, [selectedDoctor]);
   const [notification, setNotification] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -179,7 +184,7 @@ export default function App() {
            if (active) {
               setUser(null);
               // Instead of redirecting to login screen automatically, default to landing homepage or let guests stay in search/detail.
-              if (view !== 'login' && view !== 'search' && view !== 'detail') setView('landing');
+              if (viewRef.current !== 'login' && viewRef.current !== 'search' && viewRef.current !== 'detail') setView('landing');
               setLoadingAuth(false);
            }
            return;
@@ -189,7 +194,7 @@ export default function App() {
            const profile = await loadUserProfile(sessionUser);
            if (profile && active) {
               setUser(profile);
-              if (profile.role === 'patient' && selectedDoctor) {
+              if (profile.role === 'patient' && selectedDoctorRef.current) {
                  setView('detail');
               } else {
                  setView(routeForRole(profile.role));
@@ -200,7 +205,7 @@ export default function App() {
            if (active) {
               showToast(err.message || 'Unable to load your profile.', 'error');
               setUser(null);
-              if (view !== 'search' && view !== 'detail') setView('landing');
+              if (viewRef.current !== 'search' && viewRef.current !== 'detail') setView('landing');
            }
         }
         if (active) setLoadingAuth(false);
@@ -221,7 +226,7 @@ export default function App() {
        .catch(() => {
           if (active) {
              setLoadingAuth(false);
-             if (view !== 'search' && view !== 'detail' && view !== 'login') setView('landing');
+             if (viewRef.current !== 'search' && viewRef.current !== 'detail' && viewRef.current !== 'login') setView('landing');
           }
        });
 
@@ -233,7 +238,7 @@ export default function App() {
         active = false; 
         subscription.unsubscribe(); 
      };
-  }, [fetchDoctors, fetchPlatformFeePercent, showToast, view, selectedDoctor]);
+  }, [fetchDoctors, fetchPlatformFeePercent, showToast]);
 
   const fetchPatientAppointments = useCallback(async () => {
      if (user?.id) {

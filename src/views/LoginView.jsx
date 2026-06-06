@@ -33,7 +33,7 @@ const SubmitButton = ({ children, loading, onClick, haptic = 'medium', ...props 
   <button
     type="submit"
     onClick={withHaptic(onClick, haptic)}
-    className="button-lift pressable flex h-14 w-full items-center justify-center gap-2 rounded-lg bg-slate-950 px-5 text-base font-black text-white shadow-lg shadow-slate-900/15 transition-all duration-300 ease-out hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+    className="pressable flex h-14 w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-5 text-base font-semibold text-white transition-colors duration-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
     disabled={loading}
     {...props}
   >
@@ -258,8 +258,8 @@ export default function LoginView({
               className="mx-auto mb-4 h-16 w-16 rounded-lg object-cover shadow-lg shadow-cyan-900/10"
             />
           )}
-          <h1 className="text-4xl font-black text-slate-950">Rapha'l</h1>
-          <p className="mt-2 text-sm font-bold text-slate-500">Doctor appointments, payments, and updates.</p>
+          <h1 className="text-3xl font-bold text-slate-900">Rapha'l</h1>
+          <p className="mt-2 text-sm text-slate-500">Doctor appointments, payments, and updates.</p>
           <div className="hero-stat-strip auth-stat-strip mt-5 grid grid-cols-3 gap-2">
             <div>
               <span>Auth</span>
@@ -282,7 +282,7 @@ export default function LoginView({
           {mode === 'login' && (
             <form key="login" onSubmit={handleLoginSubmit} className="auth-mode-panel space-y-4">
               <div className="mb-5 text-center">
-                <h2 className="text-2xl font-black text-slate-950">Log in</h2>
+                <h2 className="text-2xl font-bold text-slate-900">Log in</h2>
               </div>
 
               <AuthField
@@ -323,7 +323,7 @@ export default function LoginView({
               <button
                 type="button"
                 onClick={() => switchMode('forgot')}
-                className="pressable h-11 w-full rounded-lg text-sm font-black text-cyan-700 transition-colors hover:bg-cyan-50 hover:text-cyan-900"
+                className="pressable h-11 w-full rounded-lg text-sm font-medium text-cyan-600 transition-colors duration-200 hover:bg-cyan-50 hover:text-cyan-700"
               >
                 Forgot password?
               </button>
@@ -332,7 +332,7 @@ export default function LoginView({
                 <button
                   type="button"
                   onClick={() => switchMode('register')}
-                  className="button-lift pressable flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-800 shadow-sm transition-all hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800"
+                  className="pressable flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all duration-200 hover:border-slate-300 hover:bg-slate-50"
                 >
                   Create new account <ArrowRight size={16} />
                 </button>
@@ -343,7 +343,7 @@ export default function LoginView({
           {mode === 'forgot' && (
             <form key="forgot" onSubmit={handlePasswordReset} className="auth-mode-panel space-y-4">
               <div className="mb-5 text-center">
-                <h2 className="text-2xl font-black text-slate-950">Reset password</h2>
+                <h2 className="text-2xl font-bold text-slate-900">Reset password</h2>
               </div>
 
               <AuthField
@@ -363,7 +363,7 @@ export default function LoginView({
               <button
                 type="button"
                 onClick={() => switchMode('login')}
-                className="pressable h-11 w-full rounded-lg text-sm font-black text-slate-500 transition-colors hover:bg-slate-50 hover:text-cyan-700"
+                className="pressable h-11 w-full rounded-lg text-sm font-medium text-slate-500 transition-colors duration-200 hover:bg-slate-50 hover:text-cyan-600"
               >
                 Back to login
               </button>
@@ -373,7 +373,7 @@ export default function LoginView({
           {mode === 'register' && (
             <form key="register" onSubmit={handleRegisterSubmit} className="auth-mode-panel space-y-4">
               <div className="mb-5 text-center">
-                <h2 className="text-2xl font-black text-slate-950">Create account</h2>
+                <h2 className="text-2xl font-bold text-slate-900">Create account</h2>
               </div>
 
               <div className="grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
@@ -385,7 +385,7 @@ export default function LoginView({
                     key={id}
                     type="button"
                     onClick={() => { triggerHaptic('selection'); setRole(id); }}
-                    className={`pressable flex h-11 items-center justify-center gap-2 rounded-md text-sm font-black transition-all ${role === id ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-500 hover:bg-white hover:text-cyan-700'}`}
+                    className={`pressable flex h-11 items-center justify-center gap-2 rounded-md text-sm font-semibold transition-all duration-200 ${role === id ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-white hover:text-slate-700'}`}
                   >
                     {React.createElement(Icon, { size: 16 })}
                     {label}
@@ -477,7 +477,7 @@ export default function LoginView({
               <button
                 type="button"
                 onClick={() => switchMode('login')}
-                className="pressable h-11 w-full rounded-lg text-sm font-black text-slate-500 transition-colors hover:bg-slate-50 hover:text-cyan-700"
+                className="pressable h-11 w-full rounded-lg text-sm font-medium text-slate-500 transition-colors duration-200 hover:bg-slate-50 hover:text-cyan-600"
               >
                 Back to login
               </button>

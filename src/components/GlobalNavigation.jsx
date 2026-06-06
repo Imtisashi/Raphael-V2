@@ -89,7 +89,7 @@ function MobileCommandMenu({
               key={item.id}
               type="button"
               onClick={() => runAction(item.action)}
-              className={`pressable flex min-h-11 w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-black transition-colors ${
+              className={`pressable flex min-h-11 w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-semibold transition-colors duration-200 ${
                 view === item.id
                   ? 'bg-slate-950 text-white dark:bg-cyan-400 dark:text-slate-950'
                   : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-700 dark:text-slate-200 dark:hover:bg-cyan-400/10 dark:hover:text-cyan-200'
@@ -102,16 +102,16 @@ function MobileCommandMenu({
           <button
             type="button"
             onClick={() => runAction(onOpenNotifications)}
-            className="pressable relative flex min-h-11 w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-black text-slate-700 transition-colors hover:bg-cyan-50 hover:text-cyan-700 dark:text-slate-200 dark:hover:bg-cyan-400/10 dark:hover:text-cyan-200"
+            className="pressable relative flex min-h-11 w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-semibold text-slate-700 transition-colors hover:bg-cyan-50 hover:text-cyan-700 dark:text-slate-200 dark:hover:bg-cyan-400/10 dark:hover:text-cyan-200"
           >
             <Bell size={18} />
             Notifications
-            {unreadCount > 0 && <span className="ml-auto rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-black text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+            {unreadCount > 0 && <span className="ml-auto rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-semibold text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
           </button>
           <button
             type="button"
             onClick={() => runAction(toggleTheme)}
-            className="pressable flex min-h-11 w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-black text-slate-700 transition-colors hover:bg-cyan-50 hover:text-cyan-700 dark:text-slate-200 dark:hover:bg-cyan-400/10 dark:hover:text-cyan-200"
+            className="pressable flex min-h-11 w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-semibold text-slate-700 transition-colors hover:bg-cyan-50 hover:text-cyan-700 dark:text-slate-200 dark:hover:bg-cyan-400/10 dark:hover:text-cyan-200"
           >
             {isDark ? <Sun size={18} /> : <Moon size={18} />}
             {isDark ? 'Light mode' : 'Dark mode'}
@@ -119,7 +119,7 @@ function MobileCommandMenu({
           <button
             type="button"
             onClick={() => runAction(onLogout)}
-            className="pressable flex min-h-11 w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-black text-red-600 transition-colors hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10"
+            className="pressable flex min-h-11 w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-semibold text-red-600 transition-colors hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10"
           >
             <LogOut size={18} />
             Logout
@@ -161,7 +161,7 @@ function PatientBottomNavigation({ view, setView, onOpenNotifications, unreadCou
               }`}
             >
               <item.icon size={22} strokeWidth={isActive ? 2.5 : 2} className={isActive ? 'animate-in zoom-in-75 duration-200' : ''} />
-              {item.id === 'alerts' && unreadCount > 0 && <span className="absolute right-2 top-1 h-4 min-w-4 rounded-full bg-red-500 px-1 text-[9px] font-black leading-4 text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+              {item.id === 'alerts' && unreadCount > 0 && <span className="absolute right-2 top-1 h-4 min-w-4 rounded-full bg-red-500 px-1 text-[9px] font-semibold leading-4 text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
               <span className="text-[9px] font-extrabold uppercase">{item.label}</span>
             </button>
           );

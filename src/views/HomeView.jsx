@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import {
-  Search, ArrowRight, Activity, HeartPulse, Sparkles, Users, ClipboardCheck, Wallet, Loader2, BadgeCheck, Bell
+  Search, ArrowRight, Activity, HeartPulse, Sparkles, Users, ClipboardCheck, Wallet, BadgeCheck, Bell
 } from 'lucide-react';
 import { triggerHaptic, withHaptic } from '../utils/haptics';
 import {
@@ -11,7 +11,6 @@ import { Button, Badge, MetricPill, SectionHeader, DoctorCard } from '../compone
 
 export default function HomeView({ setView, setSearchQuery, doctors, onSelectDoctor, onOpenNotifications, unreadCount = 0 }) {
   const [symptomInput, setSymptomInput] = useState('');
-  const [routing, setRouting] = useState(false);
   const featuredDoctors = doctors.slice(0, 3);
   const specialties = uniqueSpecialties();
   const openToday = doctors.filter((doctor) => doctorCanBookDate(doctor, formatDate(new Date()))).length;
@@ -23,14 +22,9 @@ export default function HomeView({ setView, setSearchQuery, doctors, onSelectDoc
   const routeToCare = useCallback((value) => {
     const query = String(value ?? symptomInput).trim();
     if (!query) return;
-
     triggerHaptic('selection');
     setSearchQuery(specialtyForInput(query) || query);
-    setRouting(true);
-    window.setTimeout(() => {
-      setRouting(false);
-      setView('search');
-    }, 220);
+    setView('search');
   }, [setSearchQuery, setView, symptomInput]);
 
   const searchDirectly = useCallback((value) => {
@@ -42,31 +36,31 @@ export default function HomeView({ setView, setSearchQuery, doctors, onSelectDoc
   }, [setSearchQuery, setView, symptomInput]);
 
   return (
-    <div className="relative space-y-6 pb-28 flex-1 app-screen min-h-full">
-      <div className="pro-home-hero px-6 pt-8 pb-6">
-        <div className="relative z-10 flex justify-between items-start mb-6">
+    <div className="relative space-y-5 pb-28 flex-1 app-screen min-h-full">
+      <div className="pro-home-hero px-5 pt-7 pb-5">
+        <div className="relative z-10 flex justify-between items-start mb-5">
           <div>
             <Badge type="success"><BadgeCheck size={12} /> Verified network</Badge>
-            <h1 className="mt-4 text-4xl font-black leading-[1.02] text-slate-950 dark:text-white">
-              Book trusted care from live provider records.
+            <h1 className="mt-3 text-3xl font-bold leading-tight text-slate-900 dark:text-white">
+              Book trusted care.
             </h1>
           </div>
-          <button type="button" onClick={withHaptic(onOpenNotifications, 'selection')} className="pro-icon-button pressable relative border border-slate-200 dark:border-slate-800 dark:bg-slate-900/60 dark:text-white">
+          <button type="button" onClick={withHaptic(onOpenNotifications, 'selection')} className="pro-icon-button pressable relative border border-slate-200 dark:border-slate-700 dark:bg-slate-900/60 dark:text-white">
             <Bell size={19} />
-            {unreadCount > 0 && <span className="absolute -right-1 -top-1 h-5 min-w-5 rounded-full bg-red-500 px-1 text-[10px] font-black leading-5 text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+            {unreadCount > 0 && <span className="absolute -right-1 -top-1 h-4 min-w-4 rounded-full bg-red-500 px-1 text-[10px] font-medium leading-4 text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
           </button>
         </div>
 
-        <div className="relative z-10 mb-5 grid grid-cols-3 gap-2 hero-stat-strip">
-          <div className="dark:bg-slate-900/40 dark:border-slate-800">
+        <div className="relative z-10 mb-4 grid grid-cols-3 gap-2 hero-stat-strip">
+          <div className="dark:bg-slate-900/40 dark:border-slate-700">
             <span className="dark:text-slate-400">Today</span>
             <strong className="dark:text-white">{openToday || openSoon}</strong>
           </div>
-          <div className="dark:bg-slate-900/40 dark:border-slate-800">
+          <div className="dark:bg-slate-900/40 dark:border-slate-700">
             <span className="dark:text-slate-400">Slots</span>
             <strong className="dark:text-white">{liveSlotCount}</strong>
           </div>
-          <div className="dark:bg-slate-900/40 dark:border-slate-800">
+          <div className="dark:bg-slate-900/40 dark:border-slate-700">
             <span className="dark:text-slate-400">Updates</span>
             <strong className="dark:text-white">{unreadCount}</strong>
           </div>
@@ -77,59 +71,46 @@ export default function HomeView({ setView, setSearchQuery, doctors, onSelectDoc
             event.preventDefault();
             searchDirectly();
           }}
-          className="relative z-10 pro-command-bar dark:border-slate-800 dark:bg-slate-900/90"
+          className="relative z-10 flex gap-2"
         >
-          <Search className="absolute left-4 top-4 text-slate-400" size={20} />
-          <input
-            type="text"
-            placeholder="Search doctors, symptoms, specialties"
-            value={symptomInput}
-            className="w-full h-14 pl-12 pr-14 rounded-lg bg-white dark:bg-transparent text-slate-900 dark:text-white placeholder-slate-400 outline-none font-semibold"
-            onChange={(e) => setSymptomInput(e.target.value)}
-          />
-          <button type="submit" className="pressable absolute right-2 top-2 p-2.5 rounded-lg bg-slate-950 text-white hover:bg-slate-800 dark:bg-cyan-500 dark:text-slate-950 dark:hover:bg-cyan-400 transition-colors">
-            <ArrowRight size={16} />
+          <div className="flex-1 relative">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
+            <input
+              type="text"
+              placeholder="Search doctors, symptoms, specialties"
+              value={symptomInput}
+              className="w-full h-12 pl-10 pr-4 rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 outline-none text-sm transition-colors duration-200 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
+              onChange={(e) => setSymptomInput(e.target.value)}
+            />
+          </div>
+          <button type="submit" className="pressable h-12 w-12 rounded-lg bg-slate-900 text-white hover:bg-slate-800 dark:bg-cyan-500 dark:text-slate-950 dark:hover:bg-cyan-400 transition-colors duration-200 flex items-center justify-center shrink-0">
+            <ArrowRight size={18} />
           </button>
         </form>
 
-        <div className="relative z-10 mt-4 grid grid-cols-3 gap-2">
+        <div className="relative z-10 mt-3 grid grid-cols-3 gap-2">
           {[
             { prompt: 'fever', icon: Activity },
             { prompt: 'chest pain', icon: HeartPulse },
             { prompt: 'skin rash', icon: Sparkles },
           ].map(({ prompt, icon: Icon }) => (
-            <button type="button" key={prompt} onClick={() => routeToCare(prompt)} className="quick-chip pressable dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
+            <button type="button" key={prompt} onClick={() => routeToCare(prompt)} className="quick-chip pressable dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 hover:border-cyan-300 dark:hover:border-cyan-700 transition-colors duration-200">
               {React.createElement(Icon, { size: 14 })} {prompt}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="px-5 space-y-6">
-        <div className="grid grid-cols-3 gap-3">
+      <div className="px-5 space-y-5">
+        <div className="grid grid-cols-3 gap-2.5">
           <MetricPill icon={Users} label="Doctors" value={doctors.length} tone="text-cyan-700 bg-cyan-50 border-cyan-100 dark:text-cyan-300 dark:bg-cyan-950/40 dark:border-cyan-900/30" />
           <MetricPill icon={ClipboardCheck} label="Booking" value="Live" tone="text-indigo-700 bg-indigo-50 border-indigo-100 dark:text-indigo-300 dark:bg-indigo-950/40 dark:border-indigo-900/30" />
           <MetricPill icon={Wallet} label="Pay" value="UPI" tone="text-emerald-700 bg-emerald-50 border-emerald-100 dark:text-emerald-300 dark:bg-emerald-950/40 dark:border-emerald-900/30" />
         </div>
 
-        <div className="pro-card p-5 overflow-hidden">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-black text-slate-500 uppercase dark:text-slate-400">Care finder</p>
-              <h2 className="text-2xl font-black text-slate-950 dark:text-white mt-1">Find the right specialty</h2>
-              <p className="text-sm font-semibold text-slate-500 dark:text-slate-400 mt-2">
-                Search symptoms, specialties, districts, or provider names across real available records.
-              </p>
-            </div>
-            <button type="button" onClick={() => routeToCare()} className="button-lift pressable h-14 w-14 rounded-lg bg-slate-950 text-white dark:bg-cyan-500 dark:text-slate-950 flex items-center justify-center shadow-lg shadow-slate-900/20">
-              {routing ? <Loader2 size={22} className="animate-spin" /> : <ArrowRight size={22} />}
-            </button>
-          </div>
-        </div>
-
         <section className="space-y-3">
           <SectionHeader eyebrow="Explore" title="Care specialties" />
-          <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-1">
+          <div className="flex gap-2.5 overflow-x-auto scrollbar-hide pb-1">
             {specialties.map((specialty) => {
               const meta = specialtyMeta(specialty);
               const Icon = meta.icon;
@@ -138,14 +119,14 @@ export default function HomeView({ setView, setSearchQuery, doctors, onSelectDoc
                   key={specialty}
                   type="button"
                   onClick={() => { triggerHaptic('selection'); setSearchQuery(specialty); setView('search'); }}
-                  className="specialty-tile min-w-[112px] pro-card p-4"
+                  className="specialty-tile min-w-[100px] rounded-xl border border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900 p-3.5 transition-all duration-200 hover:border-cyan-300 hover:shadow-md hover:shadow-cyan-500/5 dark:hover:border-cyan-700 group"
                 >
-                  <div className={`h-10 w-10 rounded-lg bg-gradient-to-br ${meta.tone} text-white flex items-center justify-center mb-3 shadow-md shadow-slate-900/10`}>
-                    <Icon size={19} />
+                  <div className={`h-9 w-9 rounded-lg bg-gradient-to-br ${meta.tone} text-white flex items-center justify-center mb-2 transition-transform duration-200 group-hover:scale-105`}>
+                    <Icon size={17} />
                   </div>
                   <div className="text-left">
-                    <p className="font-black text-sm text-slate-950 dark:text-white">{meta.label}</p>
-                    <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 truncate">{specialty}</p>
+                    <p className="font-semibold text-sm text-slate-900 dark:text-white">{meta.label}</p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{specialty}</p>
                   </div>
                 </button>
               );
@@ -155,7 +136,7 @@ export default function HomeView({ setView, setSearchQuery, doctors, onSelectDoc
 
         <section className="space-y-3">
           <SectionHeader eyebrow="Recommended" title="Top specialists" action="See all" onAction={() => setView('search')} />
-          <div className="grid gap-3 stagger-list">
+          <div className="grid gap-3">
             {featuredDoctors.map((doctor, index) => (
               <DoctorCard
                 key={doctor.id}
@@ -165,10 +146,10 @@ export default function HomeView({ setView, setSearchQuery, doctors, onSelectDoc
               />
             ))}
             {featuredDoctors.length === 0 && (
-              <div className="pro-card border-dashed p-6 text-center">
-                <Users size={32} className="mx-auto mb-3 text-slate-300 dark:text-slate-700" />
-                <h3 className="text-lg font-black text-slate-900 dark:text-white">No live providers yet</h3>
-                <p className="mt-2 text-sm font-semibold text-slate-500 dark:text-slate-400">Add doctors in Supabase or register a provider account to populate this list.</p>
+              <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/30 p-6 text-center">
+                <Users size={28} className="mx-auto mb-2 text-slate-300 dark:text-slate-700" />
+                <h3 className="text-base font-semibold text-slate-900 dark:text-white">No providers yet</h3>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Register a provider account to populate this list.</p>
               </div>
             )}
           </div>
