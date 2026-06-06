@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { ChevronLeft, Search } from 'lucide-react';
+import { ChevronLeft, Search, X, SlidersHorizontal } from 'lucide-react';
 import { triggerHaptic, withHaptic } from '../utils/haptics';
 import { specialtyForInput, SYMPTOM_MAP } from '../utils/utils';
 import { SectionHeader, DoctorCard } from '../components/ui/sharedComponents';
@@ -21,11 +21,17 @@ export default function SearchView({ searchQuery, setSearchQuery, doctors, setVi
     <div className="h-full flex flex-col app-screen min-h-screen pb-28">
       <div className="sticky top-0 bg-white/95 dark:bg-slate-950/95 backdrop-blur-xl z-20 pt-4 pb-4 px-5 border-b border-slate-100 dark:border-slate-900 shadow-sm">
         <div className="flex items-center gap-3 mb-4">
-          <button type="button" onClick={withHaptic(() => setView(user ? 'home' : 'landing'), 'selection')} className="pro-icon-button pressable h-10 w-10 shrink-0 border border-slate-200 dark:border-slate-800 dark:bg-slate-900/60 dark:text-white"><ChevronLeft size={20}/></button>
-          <div className="flex-1 relative group pro-command-bar dark:border-slate-800 dark:bg-slate-900/90 shadow-none">
-            <Search className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-cyan-500 transition-colors" size={18} />
-            <input autoFocus type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Find your doctor..." className="w-full bg-white dark:bg-transparent rounded-lg py-3 pl-11 pr-4 outline-none font-semibold text-sm text-slate-900 dark:text-white" />
+          <button type="button" onClick={withHaptic(() => setView(user ? 'home' : 'landing'), 'selection')} className="pro-icon-button pressable h-10 w-10 shrink-0 border border-slate-200 dark:border-slate-800 dark:bg-slate-900/60 dark:text-white"><ChevronLeft size={20} strokeWidth={2.2}/></button>
+          <div className="flex-1 relative">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} strokeWidth={2.2} />
+            <input autoFocus type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Find your doctor..." className="w-full bg-slate-100 dark:bg-slate-900 rounded-lg py-3 pl-11 pr-10 outline-none font-semibold text-sm text-slate-900 dark:text-white" />
+            {searchQuery && (
+              <button type="button" onClick={withHaptic(() => setSearchQuery(''), 'selection')} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white">
+                <X size={16} strokeWidth={2.2} />
+              </button>
+            )}
           </div>
+          <button type="button" className="pro-icon-button pressable h-10 w-10 shrink-0 border border-slate-200 dark:border-slate-800 dark:bg-slate-900/60 dark:text-white"><SlidersHorizontal size={18} strokeWidth={2.2}/></button>
         </div>
         <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
           {['All', ...Array.from(new Set(Object.values(SYMPTOM_MAP)))].map(cat => (
@@ -37,7 +43,7 @@ export default function SearchView({ searchQuery, setSearchQuery, doctors, setVi
         <SectionHeader eyebrow={`${filteredDoctors.length} matches`} title={searchQuery ? `Results for ${searchQuery}` : 'Browse specialists'} />
         {filteredDoctors.length === 0 && (
            <div className="text-center py-16 pro-card border-dashed">
-             <Search size={34} className="mx-auto text-slate-300 dark:text-slate-700 mb-4" />
+             <Search size={34} strokeWidth={2.2} className="mx-auto text-slate-300 dark:text-slate-700 mb-4" />
              <h3 className="text-lg font-black text-slate-800 dark:text-white">No specialists found</h3>
              <p className="text-sm font-semibold text-slate-500 dark:text-slate-400 mt-2">Try a symptom like fever, chest pain, rash, headache, or joint pain.</p>
            </div>

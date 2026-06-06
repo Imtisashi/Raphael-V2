@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  Shield, Bell, LogOut, Users, ClipboardCheck, TrendingUp, Loader2,
-  FileText, Check, X, CheckCircle, AlertTriangle, Copy, Clock, Activity
+  Shield, Users, ClipboardCheck, TrendingUp, Loader2, FileText, Check, X, CheckCircle, AlertTriangle, Copy, Clock, Activity
 } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { withHaptic } from '../utils/haptics';
@@ -22,7 +21,7 @@ function AppointmentTimeline({ events = [], limit = 3, compact = false }) {
   return (
     <div className={`rounded-lg border border-slate-100 bg-white/80 dark:bg-slate-900/60 dark:border-slate-800 ${compact ? 'p-3' : 'p-4'}`}>
       <div className="mb-3 flex items-center gap-2">
-        <Clock size={14} className="text-cyan-700 dark:text-cyan-400" />
+        <Clock size={14} strokeWidth={2.2} className="text-cyan-700 dark:text-cyan-400" />
         <p className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">Activity</p>
       </div>
       <div className="space-y-3">
@@ -32,7 +31,7 @@ function AppointmentTimeline({ events = [], limit = 3, compact = false }) {
           return (
             <div key={event.id} className="flex gap-3">
               <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${meta.tone}`}>
-                <Icon size={14} />
+                <Icon size={14} strokeWidth={2.2} />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-start justify-between gap-2">
@@ -51,11 +50,8 @@ function AppointmentTimeline({ events = [], limit = 3, compact = false }) {
 
 export default function AdminDashboardView({
   user,
-  logout,
   doctors,
   showToast,
-  onOpenNotifications,
-  unreadCount = 0,
   onDoctorsChanged = () => {},
   platformFeePercent = DEFAULT_PLATFORM_FEE_PERCENT,
   onPlatformFeeChanged = () => {},
@@ -280,18 +276,8 @@ export default function AdminDashboardView({
   return (
     <div className="min-h-screen app-screen text-slate-900 dark:text-slate-100 p-5 font-sans space-y-5 pb-10">
       <div className="pro-card p-5">
-        <div className="flex justify-between items-center">
-          <div>
-            <p className="text-xs font-black text-cyan-700 dark:text-cyan-400 uppercase">Operations</p>
-            <h1 className="text-3xl font-black flex items-center gap-2 text-slate-950 dark:text-white"><Shield className="text-cyan-600 dark:text-cyan-400"/> Admin</h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={withHaptic(onOpenNotifications, 'selection')} className="pro-icon-button pressable relative border border-slate-200 dark:border-slate-800 dark:bg-slate-900/60 dark:text-white">
-              <Bell size={18} />
-              {unreadCount > 0 && <span className="absolute -right-1 -top-1 h-5 min-w-5 rounded-full bg-red-500 px-1 text-[10px] font-black leading-5 text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
-            </button>
-            <button type="button" onClick={withHaptic(logout, 'warning')} className="pro-icon-button pressable text-red-600 bg-red-50 border-red-100 dark:bg-red-950/20 dark:text-red-400 dark:border-red-900/40 hover:bg-red-100"><LogOut size={18} /></button>
-          </div>
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-black flex items-center gap-2 text-slate-950 dark:text-white"><Shield size={24} strokeWidth={2.2} className="text-cyan-600 dark:text-cyan-400"/> Admin</h1>
         </div>
         <div className="grid grid-cols-2 gap-3 mt-5">
           <MetricPill icon={Users} label="Approved" value={approvedProviders.length} tone="text-cyan-700 bg-cyan-50 border-cyan-100 dark:text-cyan-300 dark:bg-cyan-950/40 dark:border-cyan-900/30" />
@@ -316,74 +302,75 @@ export default function AdminDashboardView({
                 <span className="text-sm font-black text-slate-400 dark:text-slate-500">%</span>
               </div>
             </label>
-            <button
-              type="button"
-              onClick={withHaptic(savePlatformFee, 'success')}
-              disabled={savingFee}
-              className="pressable inline-flex h-10 shrink-0 items-center justify-center rounded-lg bg-slate-950 dark:bg-cyan-500 dark:text-slate-950 px-4 text-xs font-black text-white transition-colors hover:bg-cyan-700 disabled:opacity-50"
-            >
-              {savingFee ? <Loader2 size={16} className="animate-spin" /> : 'Save'}
-            </button>
+            <Button type="submit" variant="accent" haptic="success" className="px-5 py-3 text-sm" onClick={withHaptic(savePlatformFee, 'success')} disabled={savingFee}>
+              {savingFee ? <Loader2 size={16} strokeWidth={2.2} className="animate-spin" /> : 'Save'}
+            </Button>
           </div>
         </div>
       </div>
 
       <div className="pro-card p-5 space-y-4">
         <SectionHeader eyebrow="Audit trail" title="Recent admin actions" />
-        {adminAuditEvents.length === 0 && (
-          <div className="rounded-lg border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/30 px-4 py-7 text-center">
-            <FileText className="mx-auto mb-3 text-slate-300 dark:text-slate-700" size={28} />
+        {adminAuditEvents.length === 0 ? (
+          <div className="text-center py-12">
+            <FileText className="mx-auto mb-3 text-slate-300 dark:text-slate-700" size={28} strokeWidth={2.2} />
             <p className="text-sm font-black text-slate-700 dark:text-slate-400">No admin actions recorded yet.</p>
           </div>
-        )}
-        {adminAuditEvents.map((event) => {
-          const meta = ADMIN_AUDIT_META[event.event_type] || { icon: ClipboardCheck, tone: 'bg-slate-50 text-slate-700 border-slate-100 dark:bg-slate-900 dark:text-slate-350 dark:border-slate-850' };
-          const Icon = meta.icon;
-          return (
-            <div key={event.id} className="flex items-start gap-3 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-905 p-3">
-              <div className={`shrink-0 rounded-lg border p-2 ${meta.tone}`}>
-                <Icon size={16} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-start justify-between gap-3">
-                  <p className="min-w-0 text-sm font-black text-slate-950 dark:text-white">{event.title}</p>
-                  <span className="shrink-0 text-[10px] font-bold text-slate-400 dark:text-slate-500">{formatEventTime(event.created_at)}</span>
+        ) : (
+          <div className="space-y-3 stagger-list">
+            {adminAuditEvents.map((event) => {
+              const meta = ADMIN_AUDIT_META[event.event_type] || { icon: ClipboardCheck, tone: 'bg-slate-50 text-slate-700 border-slate-100 dark:bg-slate-900 dark:text-slate-350 dark:border-slate-850' };
+              const Icon = meta.icon;
+              return (
+                <div key={event.id} className="flex items-start gap-3 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-905 p-3">
+                  <div className={`shrink-0 rounded-lg border p-2 ${meta.tone}`}>
+                    <Icon size={16} strokeWidth={2.2} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="min-w-0 text-sm font-black text-slate-950 dark:text-white">{event.title}</p>
+                      <span className="shrink-0 text-[10px] font-bold text-slate-400 dark:text-slate-550">{formatEventTime(event.created_at)}</span>
+                    </div>
+                    <p className="mt-1 text-xs font-bold leading-relaxed text-slate-500 dark:text-slate-400">{event.body}</p>
+                  </div>
                 </div>
-                <p className="mt-1 text-xs font-bold leading-relaxed text-slate-500 dark:text-slate-400">{event.body}</p>
-              </div>
-            </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="pro-card p-5 space-y-4">
         <SectionHeader eyebrow="Provider review" title="Approve specialists" />
-        {pendingProviders.length === 0 && (
-          <div className="rounded-lg border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/30 px-4 py-8 text-center">
-            <Shield className="mx-auto mb-3 text-slate-300 dark:text-slate-700" size={30} />
+        {pendingProviders.length === 0 ? (
+          <div className="text-center py-12">
+            <Shield className="mx-auto mb-3 text-slate-300 dark:text-slate-700" size={30} strokeWidth={2.2} />
             <p className="text-sm font-black text-slate-700 dark:text-slate-400">No provider profiles waiting.</p>
           </div>
-        )}
-        {pendingProviders.map((doctor) => (
-          <div key={doctor.id} className="rounded-lg border border-violet-100 dark:border-violet-950 bg-violet-50/70 dark:bg-violet-950/20 p-4 space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-black text-slate-950 dark:text-white">{doctor.name}</p>
-                <p className="text-xs font-bold text-slate-600 dark:text-slate-400">{doctor.specialty} - {doctor.district || doctor.location || 'Location not set'}</p>
+        ) : (
+          <div className="space-y-4 stagger-list">
+            {pendingProviders.map((doctor) => (
+              <div key={doctor.id} className="rounded-lg border border-violet-100 dark:border-violet-950 bg-violet-50/70 dark:bg-violet-950/20 p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black text-slate-950 dark:text-white">{doctor.name}</p>
+                    <p className="text-xs font-bold text-slate-600 dark:text-slate-400">{doctor.specialty} - {doctor.district || doctor.location || 'Location not set'}</p>
+                  </div>
+                  <Badge type="warning">Pending</Badge>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs font-bold text-slate-700 dark:text-slate-300">
+                  <div className="rounded-lg border border-violet-100 dark:border-slate-800 bg-white/85 dark:bg-slate-900 p-3">Fee<br/><span className="text-base font-black dark:text-white">{displayAmount(doctor.price)}</span></div>
+                  <div className="rounded-lg border border-violet-100 dark:border-slate-800 bg-white/85 dark:bg-slate-900 p-3">UPI<br/><span className="text-base font-black break-all dark:text-white">{doctor.upi_id || 'Missing'}</span></div>
+                  <div className="col-span-2 rounded-lg border border-violet-100 dark:border-slate-800 bg-white/85 dark:bg-slate-900 p-3">Clinic<br/><span className="text-sm font-black dark:text-white">{doctor.clinic_name || doctor.location || 'Not set'}</span></div>
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={() => reviewProvider(doctor, 'approved')} variant="accent" haptic="success" className="flex-1 py-2.5 text-xs shadow-none"><Check size={16} strokeWidth={2.2}/> Approve</Button>
+                  <Button onClick={() => reviewProvider(doctor, 'rejected')} variant="secondary" haptic="warning" className="flex-1 py-2.5 text-xs"><X size={16} strokeWidth={2.2}/> Reject</Button>
+                </div>
               </div>
-              <Badge type="warning">Pending</Badge>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-xs font-bold text-slate-700 dark:text-slate-300">
-              <div className="rounded-lg border border-violet-100 dark:border-slate-800 bg-white/85 dark:bg-slate-900 p-3">Fee<br/><span className="text-base font-black dark:text-white">{displayAmount(doctor.price)}</span></div>
-              <div className="rounded-lg border border-violet-100 dark:border-slate-800 bg-white/85 dark:bg-slate-900 p-3">UPI<br/><span className="text-base font-black break-all dark:text-white">{doctor.upi_id || 'Missing'}</span></div>
-              <div className="col-span-2 rounded-lg border border-violet-100 dark:border-slate-800 bg-white/85 dark:bg-slate-900 p-3">Clinic<br/><span className="text-sm font-black dark:text-white">{doctor.clinic_name || doctor.location || 'Not set'}</span></div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Button onClick={() => reviewProvider(doctor, 'approved')} variant="accent" haptic="success" className="py-3 text-sm shadow-none"><Check size={16}/> Approve</Button>
-              <Button onClick={() => reviewProvider(doctor, 'rejected')} variant="secondary" haptic="warning" className="py-3 text-sm"><X size={16}/> Reject</Button>
-            </div>
+            ))}
           </div>
-        ))}
+        )}
       </div>
 
       <div className="pro-card p-5 space-y-4">
@@ -394,54 +381,58 @@ export default function AdminDashboardView({
           </div>
         )}
         {!loading && paymentQueue.length === 0 && (
-          <div className="rounded-lg border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/30 px-4 py-8 text-center">
-            <CheckCircle className="mx-auto mb-3 text-emerald-500" size={30} />
-            <p className="text-sm font-black text-slate-700 dark:text-slate-400">No payment proofs waiting.</p>
+           <div className="text-center py-6">
+             <CheckCircle className="mx-auto mb-3 text-emerald-500" size={30} strokeWidth={2.2} />
+             <p className="text-sm font-black text-slate-700 dark:text-slate-400">No payment proofs waiting.</p>
+           </div>
+        )}
+        {!loading && paymentQueue.length > 0 && (
+          <div className="space-y-4 stagger-list">
+            {paymentQueue.map((appointment) => {
+              const review = paymentReviewFor(appointment, adminAppointments, platformFeePercent);
+              const settlement = review.settlement;
+              return (
+                <div key={appointment.id} className="rounded-lg border border-amber-100 dark:border-amber-950 bg-amber-50/70 dark:bg-amber-950/20 p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black text-slate-950 dark:text-white">{appointment.patient_name}</p>
+                      <p className="text-xs font-bold text-slate-600 dark:text-slate-400">{appointment.doctor_name} - {shortDate(appointment.appointment_date)} at {appointment.slot}</p>
+                    </div>
+                    <Badge type={review.ready ? 'success' : 'warning'}>{review.ready ? 'Ready' : 'Review'}</Badge>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs font-bold text-slate-700 dark:text-slate-350">
+                    <div className="rounded-lg bg-white/80 dark:bg-slate-900 p-3 border border-amber-100 dark:border-slate-850">Amount<br/><span className="text-base font-black dark:text-white">{displayAmount(appointment.amount)}</span></div>
+                    <div className="rounded-lg bg-white/80 dark:bg-slate-900 p-3 border border-amber-100 dark:border-slate-850">UTR<br/><span className="text-base font-black break-all dark:text-white">{appointment.transaction_id || 'Cash'}</span></div>
+                    <div className="rounded-lg bg-white/80 dark:bg-slate-900 p-3 border border-amber-100 dark:border-slate-850">Doctor payout<br/><span className="text-base font-black dark:text-white">{formatMoney(settlement.doctorShare)}</span></div>
+                    <div className="rounded-lg bg-white/80 dark:bg-slate-900 p-3 border border-amber-100 dark:border-slate-850">Platform fee<br/><span className="text-base font-black dark:text-white">{formatMoney(settlement.platformFee)}</span></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {review.checks.map((check) => (
+                      <div key={check.label} className={`rounded-lg border bg-white/85 dark:bg-slate-900 p-3 ${check.pass ? 'border-emerald-100 text-emerald-700 dark:border-emerald-950 dark:text-emerald-400' : 'border-red-100 text-red-700 dark:border-red-950 dark:text-red-400'}`}>
+                        <div className="flex items-center gap-2">
+                          {check.pass ? <CheckCircle size={14} strokeWidth={2.2} /> : <AlertTriangle size={14} strokeWidth={2.2} />}
+                          <p className="text-[10px] font-black uppercase">{check.label}</p>
+                        </div>
+                        <p className="mt-1 truncate text-xs font-bold text-slate-700 dark:text-slate-350">{check.detail}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <AppointmentTimeline events={appointmentEvents[String(appointment.id)] || []} limit={4} />
+                  <textarea
+                    value={notes[appointment.id] || ''}
+                    onChange={(event) => setNotes(prev => ({ ...prev, [appointment.id]: event.target.value }))}
+                    placeholder="Admin note or rejection reason"
+                    className="w-full rounded-lg border border-amber-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-3 text-sm font-bold text-slate-800 dark:text-white outline-none focus:border-amber-300 dark:focus:border-amber-500/50 focus:ring-4 focus:ring-cyan-100 dark:focus:ring-cyan-950"
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <Button onClick={() => verifyPayment(appointment)} variant="accent" haptic="success" className="py-3 text-sm shadow-none" disabled={!review.ready}><Check size={16} strokeWidth={2.2}/> Verify</Button>
+                    <Button onClick={() => rejectPayment(appointment)} variant="secondary" haptic="warning" className="py-3 text-sm"><X size={16} strokeWidth={2.2}/> Reject</Button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
-        {paymentQueue.map((appointment) => {
-          const review = paymentReviewFor(appointment, adminAppointments, platformFeePercent);
-          const settlement = review.settlement;
-          return (
-            <div key={appointment.id} className="rounded-lg border border-amber-100 dark:border-amber-950 bg-amber-50/70 dark:bg-amber-950/20 p-4 space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-black text-slate-950 dark:text-white">{appointment.patient_name}</p>
-                  <p className="text-xs font-bold text-slate-600 dark:text-slate-400">{appointment.doctor_name} - {shortDate(appointment.appointment_date)} at {appointment.slot}</p>
-                </div>
-                <Badge type={review.ready ? 'success' : 'warning'}>{review.ready ? 'Ready' : 'Review'}</Badge>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs font-bold text-slate-700 dark:text-slate-350">
-                <div className="rounded-lg bg-white/80 dark:bg-slate-900 p-3 border border-amber-100 dark:border-slate-850">Amount<br/><span className="text-base font-black dark:text-white">{displayAmount(appointment.amount)}</span></div>
-                <div className="rounded-lg bg-white/80 dark:bg-slate-900 p-3 border border-amber-100 dark:border-slate-850">UTR<br/><span className="text-base font-black break-all dark:text-white">{appointment.transaction_id || 'Cash'}</span></div>
-                <div className="rounded-lg bg-white/80 dark:bg-slate-900 p-3 border border-amber-100 dark:border-slate-850">Doctor payout<br/><span className="text-base font-black dark:text-white">{formatMoney(settlement.doctorShare)}</span></div>
-                <div className="rounded-lg bg-white/80 dark:bg-slate-900 p-3 border border-amber-100 dark:border-slate-850">Platform fee<br/><span className="text-base font-black dark:text-white">{formatMoney(settlement.platformFee)}</span></div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {review.checks.map((check) => (
-                  <div key={check.label} className={`rounded-lg border bg-white/85 dark:bg-slate-900 p-3 ${check.pass ? 'border-emerald-100 text-emerald-700 dark:border-emerald-950 dark:text-emerald-400' : 'border-red-100 text-red-700 dark:border-red-950 dark:text-red-400'}`}>
-                    <div className="flex items-center gap-2">
-                      {check.pass ? <CheckCircle size={14} /> : <AlertTriangle size={14} />}
-                      <p className="text-[10px] font-black uppercase">{check.label}</p>
-                    </div>
-                    <p className="mt-1 truncate text-xs font-bold text-slate-700 dark:text-slate-300">{check.detail}</p>
-                  </div>
-                ))}
-              </div>
-              <AppointmentTimeline events={appointmentEvents[String(appointment.id)] || []} limit={4} />
-              <textarea
-                value={notes[appointment.id] || ''}
-                onChange={(event) => setNotes(prev => ({ ...prev, [appointment.id]: event.target.value }))}
-                placeholder="Admin note or rejection reason"
-                className="w-full rounded-lg border border-amber-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-3 text-sm font-bold text-slate-800 dark:text-white outline-none focus:border-amber-300 dark:focus:border-amber-500/50 focus:ring-4 focus:ring-cyan-100 dark:focus:ring-cyan-950"
-              />
-              <div className="grid grid-cols-2 gap-3">
-                <Button onClick={() => verifyPayment(appointment)} variant="accent" haptic="success" className="py-3 text-sm shadow-none" disabled={!review.ready}><Check size={16}/> Verify</Button>
-                <Button onClick={() => rejectPayment(appointment)} variant="secondary" haptic="warning" className="py-3 text-sm"><X size={16}/> Reject</Button>
-              </div>
-            </div>
-          );
-        })}
       </div>
 
       <div className="pro-card p-5 space-y-4">
@@ -508,7 +499,7 @@ export default function AdminDashboardView({
                       onClick={withHaptic(() => copyDoctorUpi(doctorLookup.get(String(appointment.doctor_id))?.upi_id), 'selection')}
                       className="pressable rounded-lg bg-slate-55 dark:bg-slate-800 px-3 py-2 text-xs font-black text-slate-600 dark:text-slate-300 hover:bg-cyan-50 dark:hover:bg-cyan-950 hover:text-cyan-700"
                     >
-                      <Copy size={14} />
+                      <Copy size={14} strokeWidth={2.2} />
                     </button>
                   )}
                   <button type="button" onClick={withHaptic(() => markPayoutPaid(appointment), 'success')} className="pressable rounded-lg bg-emerald-50 dark:bg-emerald-950/45 px-3 py-2 text-xs font-black text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900">
@@ -523,7 +514,7 @@ export default function AdminDashboardView({
 
       <div className="pro-card p-5">
         <SectionHeader eyebrow="Directory" title="Registered providers" />
-        <div className="space-y-3">
+        <div className="space-y-3 stagger-list">
           {doctors.map(doc => (
             <div key={doc.id} className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-lg border border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 hover:border-cyan-200 transition-colors mt-3">
               <div className="min-w-0">

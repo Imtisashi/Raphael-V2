@@ -26,12 +26,12 @@ export default function DoctorDetailView({ doctor, setView, selectedSlot, setSel
   return (
     <div className="relative h-full min-h-0 flex flex-col overflow-hidden app-screen">
       <div className="relative shrink-0 px-6 pt-6 pb-7 overflow-hidden pro-detail-hero text-white">
-        <button type="button" onClick={withHaptic(() => { setSelectedSlot(null); setView('search'); }, 'selection')} className="pressable relative z-20 p-2.5 bg-white/15 hover:bg-white/25 backdrop-blur-md rounded-lg text-white transition-colors border border-white/20"><ChevronLeft size={20} /></button>
+        <button type="button" onClick={withHaptic(() => { setSelectedSlot(null); setView('search'); }, 'selection')} className="pressable relative z-20 p-2.5 bg-white/15 hover:bg-white/25 backdrop-blur-md rounded-lg text-white transition-colors border border-white/20"><ChevronLeft size={20} strokeWidth={2.2} /></button>
 
         <div className="relative z-10 mt-8 flex items-end justify-between gap-5">
           <div className="min-w-0">
             <div className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/15 px-3 py-1.5 text-xs font-black text-white">
-              <Icon size={13} /> {doctor.specialty}
+              <Icon size={13} strokeWidth={2.2} /> {doctor.specialty}
             </div>
             <h1 className="mt-4 text-4xl font-black leading-[1.03]">{doctor.name}</h1>
             <p className="mt-3 text-sm font-semibold text-cyan-50">{doctor.clinic_name || doctor.location || 'Verified Rapha\'l provider'}</p>
@@ -61,11 +61,11 @@ export default function DoctorDetailView({ doctor, setView, selectedSlot, setSel
           <p className="text-slate-600 dark:text-slate-350 text-sm leading-relaxed font-semibold mt-3">{doctor.bio || "This provider has not added profile details yet."}</p>
           <div className="mt-4 grid grid-cols-2 gap-3">
             <div className={`rounded-lg border px-3 py-3 ${meta.soft}`}>
-              <Shield size={16} />
+              <Shield size={16} strokeWidth={2.2} />
               <p className="mt-2 text-xs font-black">{approved ? 'Verified provider' : 'Provider under review'}</p>
             </div>
             <div className="rounded-lg border border-amber-100 bg-amber-50 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/40 px-3 py-3">
-              <Star size={16} className="fill-amber-400 text-amber-400" />
+              <Star size={16} strokeWidth={2.2} className="fill-amber-400 text-amber-400" />
               <p className="mt-2 text-xs font-black">{doctor.reviews || 0} reviews</p>
             </div>
           </div>
@@ -81,7 +81,7 @@ export default function DoctorDetailView({ doctor, setView, selectedSlot, setSel
                 onClick={withHaptic(() => setCalendarMonth(prev => subtractMonths(prev, 1)), 'selection')}
                 className="pro-icon-button pressable h-9 w-9 border border-slate-200 dark:border-slate-800 dark:bg-slate-900/60 dark:text-white"
               >
-                <ChevronLeft size={16} />
+                <ChevronLeft size={16} strokeWidth={2.2} />
               </button>
               <button
                 type="button"
@@ -89,7 +89,7 @@ export default function DoctorDetailView({ doctor, setView, selectedSlot, setSel
                 onClick={withHaptic(() => setCalendarMonth(prev => addMonths(prev, 1)), 'selection')}
                 className="pro-icon-button pressable h-9 w-9 border border-slate-200 dark:border-slate-800 dark:bg-slate-900/60 dark:text-white"
               >
-                <ChevronRight size={16} />
+                <ChevronRight size={16} strokeWidth={2.2} />
               </button>
             </div>
           </div>

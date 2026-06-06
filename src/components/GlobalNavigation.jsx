@@ -3,14 +3,12 @@ import {
   Bell,
   Calendar,
   LogOut,
-  Menu,
   Moon,
   Search,
   Shield,
   Stethoscope,
   Sun,
   User,
-  X,
   Zap,
 } from 'lucide-react';
 import { useTheme } from '../providers/themeContext';
@@ -30,7 +28,6 @@ function MobileCommandMenu({
   role,
   view,
   setView,
-  onToggle,
   onClose,
   onOpenNotifications,
   onLogout,
@@ -63,69 +60,56 @@ function MobileCommandMenu({
   };
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-[70]">
-      {open && (
-        <button
-          type="button"
-          aria-label="Close menu"
-          onClick={withHaptic(onClose, 'selection')}
-          className="pointer-events-auto absolute inset-0 bg-slate-950/35 backdrop-blur-sm animate-in fade-in dark:bg-black/55"
-        />
-      )}
-
+    <div className={`pointer-events-none absolute inset-0 z-[70] transition-all duration-300 ${open ? 'visible' : 'invisible'}`}>
       <button
         type="button"
-        aria-label="Open menu"
-        onClick={withHaptic(onToggle, 'selection')}
-        className="pointer-events-auto pressable absolute left-5 top-5 inline-flex h-12 w-12 items-center justify-center rounded-lg border border-slate-200 bg-white/95 text-slate-950 shadow-[0_18px_45px_rgba(15,23,42,0.18)] backdrop-blur-xl transition-transform dark:border-slate-700 dark:bg-slate-950/92 dark:text-white"
-      >
-        {open ? <X size={20} /> : <Menu size={21} />}
-      </button>
+        aria-label="Close menu"
+        onClick={withHaptic(onClose, 'selection')}
+        className={`pointer-events-auto absolute inset-0 bg-slate-950/35 backdrop-blur-sm transition-opacity duration-300 dark:bg-black/55 ${open ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+      />
 
-      {open && (
-        <div className="mobile-menu-surface pointer-events-auto absolute left-5 right-5 top-20 rounded-lg border border-slate-200 bg-white p-2 shadow-[0_28px_80px_rgba(15,23,42,0.26)] view-panel dark:border-slate-700 dark:bg-slate-950">
-          {items.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => runAction(item.action)}
-              className={`pressable flex min-h-11 w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-semibold transition-colors duration-200 ${
-                view === item.id
-                  ? 'bg-slate-950 text-white dark:bg-cyan-400 dark:text-slate-950'
-                  : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-700 dark:text-slate-200 dark:hover:bg-cyan-400/10 dark:hover:text-cyan-200'
-              }`}
-            >
-              <item.icon size={18} />
-              {item.label}
-            </button>
-          ))}
+      <div className={`mobile-menu-surface pointer-events-auto absolute left-4 right-4 top-16 rounded-lg border border-slate-200 bg-white p-2 shadow-lg dark:border-slate-800 dark:bg-slate-950 transform transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${open ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-4 scale-95 pointer-events-none'}`}>
+        {items.map((item) => (
           <button
+            key={item.id}
             type="button"
-            onClick={() => runAction(onOpenNotifications)}
-            className="pressable relative flex min-h-11 w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-semibold text-slate-700 transition-colors hover:bg-cyan-50 hover:text-cyan-700 dark:text-slate-200 dark:hover:bg-cyan-400/10 dark:hover:text-cyan-200"
+            onClick={() => runAction(item.action)}
+            className={`pressable flex min-h-11 w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-semibold transition-colors duration-200 ${
+              view === item.id
+                ? 'bg-slate-950 text-white dark:bg-cyan-400 dark:text-slate-950'
+                : 'text-slate-700 hover:bg-cyan-50 hover:text-cyan-700 dark:text-slate-200 dark:hover:bg-cyan-400/10 dark:hover:text-cyan-200'
+            }`}
           >
-            <Bell size={18} />
-            Notifications
-            {unreadCount > 0 && <span className="ml-auto rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-semibold text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+            <item.icon size={18} />
+            {item.label}
           </button>
-          <button
-            type="button"
-            onClick={() => runAction(toggleTheme)}
-            className="pressable flex min-h-11 w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-semibold text-slate-700 transition-colors hover:bg-cyan-50 hover:text-cyan-700 dark:text-slate-200 dark:hover:bg-cyan-400/10 dark:hover:text-cyan-200"
-          >
-            {isDark ? <Sun size={18} /> : <Moon size={18} />}
-            {isDark ? 'Light mode' : 'Dark mode'}
-          </button>
-          <button
-            type="button"
-            onClick={() => runAction(onLogout)}
-            className="pressable flex min-h-11 w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-semibold text-red-600 transition-colors hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10"
-          >
-            <LogOut size={18} />
-            Logout
-          </button>
-        </div>
-      )}
+        ))}
+        <button
+          type="button"
+          onClick={() => runAction(onOpenNotifications)}
+          className="pressable relative flex min-h-11 w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-semibold text-slate-700 transition-colors hover:bg-cyan-50 hover:text-cyan-700 dark:text-slate-200 dark:hover:bg-cyan-400/10 dark:hover:text-cyan-200"
+        >
+          <Bell size={18} />
+          Notifications
+          {unreadCount > 0 && <span className="ml-auto rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-semibold text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+        </button>
+        <button
+          type="button"
+          onClick={() => runAction(toggleTheme)}
+          className="pressable flex min-h-11 w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-semibold text-slate-700 transition-colors hover:bg-cyan-50 hover:text-cyan-700 dark:text-slate-200 dark:hover:bg-cyan-400/10 dark:hover:text-cyan-200"
+        >
+          {isDark ? <Sun size={18} /> : <Moon size={18} />}
+          {isDark ? 'Light mode' : 'Dark mode'}
+        </button>
+        <button
+          type="button"
+          onClick={() => runAction(onLogout)}
+          className="pressable flex min-h-11 w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm font-semibold text-red-600 transition-colors hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-500/10"
+        >
+          <LogOut size={18} />
+          Logout
+        </button>
+      </div>
     </div>
   );
 }
@@ -160,7 +144,7 @@ function PatientBottomNavigation({ view, setView, onOpenNotifications, unreadCou
                   : 'text-slate-500 hover:bg-cyan-50 hover:text-cyan-700 dark:text-slate-300 dark:hover:bg-cyan-400/10 dark:hover:text-cyan-200'
               }`}
             >
-              <item.icon size={22} strokeWidth={isActive ? 2.5 : 2} className={isActive ? 'animate-in zoom-in-75 duration-200' : ''} />
+              <item.icon size={22} strokeWidth={2.2} className={isActive ? 'animate-in zoom-in-75 duration-200' : ''} />
               {item.id === 'alerts' && unreadCount > 0 && <span className="absolute right-2 top-1 h-4 min-w-4 rounded-full bg-red-500 px-1 text-[9px] font-semibold leading-4 text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
               <span className="text-[9px] font-extrabold uppercase">{item.label}</span>
             </button>

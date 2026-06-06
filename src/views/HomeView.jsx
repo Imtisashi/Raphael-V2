@@ -1,15 +1,15 @@
 import React, { useState, useCallback } from 'react';
 import {
-  Search, ArrowRight, Activity, HeartPulse, Sparkles, Users, ClipboardCheck, Wallet, BadgeCheck, Bell
+  Search, ArrowRight, Activity, HeartPulse, Sparkles, Users, ClipboardCheck, Wallet, BadgeCheck
 } from 'lucide-react';
-import { triggerHaptic, withHaptic } from '../utils/haptics';
+import { triggerHaptic } from '../utils/haptics';
 import {
   uniqueSpecialties, doctorCanBookDate, formatDate, nextAvailabilityForDoctor,
   doctorWorkingDates, specialtyForInput, specialtyMeta
 } from '../utils/utils';
 import { Button, Badge, MetricPill, SectionHeader, DoctorCard } from '../components/ui/sharedComponents';
 
-export default function HomeView({ setView, setSearchQuery, doctors, onSelectDoctor, onOpenNotifications, unreadCount = 0 }) {
+export default function HomeView({ setView, setSearchQuery, doctors, onSelectDoctor, unreadCount = 0 }) {
   const [symptomInput, setSymptomInput] = useState('');
   const featuredDoctors = doctors.slice(0, 3);
   const specialties = uniqueSpecialties();
@@ -40,15 +40,11 @@ export default function HomeView({ setView, setSearchQuery, doctors, onSelectDoc
       <div className="pro-home-hero px-5 pt-7 pb-5">
         <div className="relative z-10 flex justify-between items-start mb-5">
           <div>
-            <Badge type="success"><BadgeCheck size={12} /> Verified network</Badge>
+            <Badge type="success"><BadgeCheck size={12} strokeWidth={2.2} /> Verified network</Badge>
             <h1 className="mt-3 text-3xl font-bold leading-tight text-slate-900 dark:text-white">
               Book trusted care.
             </h1>
           </div>
-          <button type="button" onClick={withHaptic(onOpenNotifications, 'selection')} className="pro-icon-button pressable relative border border-slate-200 dark:border-slate-700 dark:bg-slate-900/60 dark:text-white">
-            <Bell size={19} />
-            {unreadCount > 0 && <span className="absolute -right-1 -top-1 h-4 min-w-4 rounded-full bg-red-500 px-1 text-[10px] font-medium leading-4 text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
-          </button>
         </div>
 
         <div className="relative z-10 mb-4 grid grid-cols-3 gap-2 hero-stat-strip">
@@ -74,7 +70,7 @@ export default function HomeView({ setView, setSearchQuery, doctors, onSelectDoc
           className="relative z-10 flex gap-2"
         >
           <div className="flex-1 relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} strokeWidth={2.2} />
             <input
               type="text"
               placeholder="Search doctors, symptoms, specialties"
@@ -84,7 +80,7 @@ export default function HomeView({ setView, setSearchQuery, doctors, onSelectDoc
             />
           </div>
           <button type="submit" className="pressable h-12 w-12 rounded-lg bg-slate-900 text-white hover:bg-slate-800 dark:bg-cyan-500 dark:text-slate-950 dark:hover:bg-cyan-400 transition-colors duration-200 flex items-center justify-center shrink-0">
-            <ArrowRight size={18} />
+            <ArrowRight size={18} strokeWidth={2.2} />
           </button>
         </form>
 
@@ -95,7 +91,7 @@ export default function HomeView({ setView, setSearchQuery, doctors, onSelectDoc
             { prompt: 'skin rash', icon: Sparkles },
           ].map(({ prompt, icon: Icon }) => (
             <button type="button" key={prompt} onClick={() => routeToCare(prompt)} className="quick-chip pressable dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 hover:border-cyan-300 dark:hover:border-cyan-700 transition-colors duration-200">
-              {React.createElement(Icon, { size: 14 })} {prompt}
+              {React.createElement(Icon, { size: 14, strokeWidth: 2.2 })} {prompt}
             </button>
           ))}
         </div>
@@ -122,7 +118,7 @@ export default function HomeView({ setView, setSearchQuery, doctors, onSelectDoc
                   className="specialty-tile min-w-[100px] rounded-xl border border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900 p-3.5 transition-all duration-200 hover:border-cyan-300 hover:shadow-md hover:shadow-cyan-500/5 dark:hover:border-cyan-700 group"
                 >
                   <div className={`h-9 w-9 rounded-lg bg-gradient-to-br ${meta.tone} text-white flex items-center justify-center mb-2 transition-transform duration-200 group-hover:scale-105`}>
-                    <Icon size={17} />
+                    <Icon size={17} strokeWidth={2.2} />
                   </div>
                   <div className="text-left">
                     <p className="font-semibold text-sm text-slate-900 dark:text-white">{meta.label}</p>
@@ -136,7 +132,7 @@ export default function HomeView({ setView, setSearchQuery, doctors, onSelectDoc
 
         <section className="space-y-3">
           <SectionHeader eyebrow="Recommended" title="Top specialists" action="See all" onAction={() => setView('search')} />
-          <div className="grid gap-3">
+          <div className="grid gap-3 stagger-list">
             {featuredDoctors.map((doctor, index) => (
               <DoctorCard
                 key={doctor.id}
@@ -147,7 +143,7 @@ export default function HomeView({ setView, setSearchQuery, doctors, onSelectDoc
             ))}
             {featuredDoctors.length === 0 && (
               <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/30 p-6 text-center">
-                <Users size={28} className="mx-auto mb-2 text-slate-300 dark:text-slate-700" />
+                <Users size={28} strokeWidth={2.2} className="mx-auto mb-2 text-slate-300 dark:text-slate-700" />
                 <h3 className="text-base font-semibold text-slate-900 dark:text-white">No providers yet</h3>
                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Register a provider account to populate this list.</p>
               </div>

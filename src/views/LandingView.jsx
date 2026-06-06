@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  Search, ArrowRight, Heart, Calendar, ChevronRight, Activity, Moon, Sun
+  Search, ArrowRight, Heart, ChevronRight, Activity, Moon, Sun
 } from 'lucide-react';
 import { useTheme } from '../providers/themeContext';
 import { triggerHaptic, withHaptic } from '../utils/haptics';
@@ -39,7 +39,7 @@ export default function LandingView({ setView, doctors, setSearchQuery, onSelect
       <header className="sticky top-0 z-50 w-full bg-white/90 dark:bg-slate-950/90 backdrop-blur-lg border-b border-slate-200/80 dark:border-slate-800 px-6 py-3.5 flex items-center justify-between transition-colors duration-200">
         <div className="flex items-center gap-2.5">
           <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-cyan-600 to-teal-600 flex items-center justify-center">
-            <Heart size={16} className="text-white" />
+            <Heart size={16} strokeWidth={2.2} className="text-white" />
           </div>
           <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">Rapha'l</span>
         </div>
@@ -50,7 +50,7 @@ export default function LandingView({ setView, doctors, setSearchQuery, onSelect
             className="pro-icon-button pressable h-9 w-9 border border-slate-200 dark:border-slate-700 dark:bg-slate-900/60"
             title="Toggle Theme"
           >
-            {isDark ? <Sun size={16} className="text-amber-400" /> : <Moon size={16} className="text-slate-600" />}
+            {isDark ? <Sun size={16} strokeWidth={2.2} className="text-amber-400" /> : <Moon size={16} strokeWidth={2.2} className="text-slate-600" />}
           </button>
           <Button
             onClick={onLoginClick}
@@ -78,7 +78,7 @@ export default function LandingView({ setView, doctors, setSearchQuery, onSelect
         {/* Search Bar */}
         <form onSubmit={handleSearchSubmit} className="flex gap-2 max-w-md items-center mb-6">
           <div className="flex-1 relative">
-            <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <Search size={18} strokeWidth={2.2} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
               type="text"
               placeholder="Search doctors, symptoms, specialties..."
@@ -91,7 +91,7 @@ export default function LandingView({ setView, doctors, setSearchQuery, onSelect
             type="submit"
             className="pressable h-11 w-11 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white flex items-center justify-center shrink-0 transition-colors duration-200"
           >
-            <ArrowRight size={18} />
+            <ArrowRight size={18} strokeWidth={2.2} />
           </button>
         </form>
 
@@ -125,7 +125,7 @@ export default function LandingView({ setView, doctors, setSearchQuery, onSelect
                   className="pressable flex flex-col items-center justify-center p-3.5 rounded-xl border border-slate-200/80 bg-white dark:border-slate-800 dark:bg-slate-900 transition-all duration-200 hover:border-cyan-300 hover:shadow-md hover:shadow-cyan-500/5 dark:hover:border-cyan-700 group"
                 >
                   <div className={`h-10 w-10 rounded-lg bg-gradient-to-br ${meta.tone} flex items-center justify-center text-white mb-2 transition-transform duration-200 group-hover:scale-105`}>
-                    <Icon size={18} />
+                    <Icon size={18} strokeWidth={2.2} />
                   </div>
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 text-center leading-tight truncate w-full">
                     {meta.label}
@@ -147,7 +147,7 @@ export default function LandingView({ setView, doctors, setSearchQuery, onSelect
               onClick={withHaptic(() => setView('search'), 'selection')}
               className="text-sm font-medium text-cyan-600 hover:text-cyan-700 dark:text-cyan-400 dark:hover:text-cyan-300 flex items-center gap-0.5 transition-colors duration-200"
             >
-              View all <ChevronRight size={14} />
+              View all <ChevronRight size={14} strokeWidth={2.2} />
             </button>
           </div>
 
@@ -165,7 +165,7 @@ export default function LandingView({ setView, doctors, setSearchQuery, onSelect
               ))
             ) : (
               <div className="p-6 text-center rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/30">
-                <Activity className="mx-auto text-slate-300 dark:text-slate-700 mb-2" size={28} />
+                <Activity className="mx-auto text-slate-300 dark:text-slate-700 mb-2" size={28} strokeWidth={2.2} />
                 <p className="text-sm text-slate-500">Loading doctor directory...</p>
               </div>
             )}
@@ -202,7 +202,7 @@ export default function LandingView({ setView, doctors, setSearchQuery, onSelect
       <footer className="px-6 py-8 text-center border-t border-slate-100 dark:border-slate-800/60 max-w-xl mx-auto">
         <div className="flex justify-center items-center gap-2 mb-3">
           <div className="h-5 w-5 rounded-md bg-gradient-to-br from-cyan-600 to-teal-600 flex items-center justify-center">
-            <Heart size={10} className="text-white" />
+            <Heart size={10} strokeWidth={2.2} className="text-white" />
           </div>
           <span className="text-sm font-semibold text-slate-900 dark:text-white">Rapha'l Health</span>
         </div>

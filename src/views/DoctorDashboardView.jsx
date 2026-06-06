@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  Bell, LogOut, Shield, ClipboardCheck, CheckCircle, AlertTriangle, X, Edit3,
-  ChevronLeft, ChevronRight, Plus, Save, Trash2, Calendar, Check, Clock, Activity
+  Shield, ClipboardCheck, CheckCircle, AlertTriangle, X, Edit3,
+  ChevronLeft, ChevronRight, Plus, Save, Trash2, Calendar, Check, Clock, Activity, Loader2
 } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { triggerHaptic, withHaptic } from '../utils/haptics';
@@ -33,7 +33,7 @@ function AppointmentTimeline({ events = [], limit = 3, compact = false }) {
           return (
             <div key={event.id} className="flex gap-3">
               <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${meta.tone}`}>
-                <Icon size={14} />
+                <Icon size={14} strokeWidth={2.2} />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-start justify-between gap-2">
@@ -50,7 +50,7 @@ function AppointmentTimeline({ events = [], limit = 3, compact = false }) {
   );
 }
 
-export default function DoctorDashboardView({ user, doctor, logout, showToast, onSaveProfile, onOpenNotifications, unreadCount = 0, onAvailabilityChanged = () => {} }) {
+export default function DoctorDashboardView({ user, doctor, showToast, onSaveProfile, onAvailabilityChanged = () => {} }) {
   const [appointments, setAppointments] = useState([]);
   const [appointmentEvents, setAppointmentEvents] = useState({});
   const [profileOpen, setProfileOpen] = useState(false);
@@ -289,20 +289,13 @@ export default function DoctorDashboardView({ user, doctor, logout, showToast, o
     <div className="min-h-screen app-screen p-5 font-sans space-y-5">
       <div className="pro-card p-5">
         <div className="flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <Avatar name={user?.name} specialty="General Physician" size="md" />
-          <div>
-            <h1 className="text-xl font-black text-slate-950 dark:text-white leading-tight">{doctorDisplayName(user?.name)}</h1>
-            <span className="text-xs font-bold text-cyan-700 dark:text-cyan-400">Provider console</span>
+          <div className="flex items-center gap-3">
+            <Avatar name={user?.name} specialty="General Physician" size="md" />
+            <div>
+              <h1 className="text-xl font-black text-slate-950 dark:text-white leading-tight">{doctorDisplayName(user?.name)}</h1>
+              <span className="text-xs font-bold text-cyan-700 dark:text-cyan-400">Provider console</span>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={withHaptic(onOpenNotifications, 'selection')} className="pro-icon-button pressable relative border border-slate-200 dark:border-slate-800 dark:bg-slate-900/60 dark:text-white">
-            <Bell size={18} />
-            {unreadCount > 0 && <span className="absolute -right-1 -top-1 h-5 min-w-5 rounded-full bg-red-500 px-1 text-[10px] font-black leading-5 text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
-          </button>
-          <button type="button" onClick={withHaptic(logout, 'warning')} className="pro-icon-button pressable text-red-600 bg-red-50 border-red-100 dark:bg-red-950/20 dark:text-red-400 dark:border-red-900/40 hover:bg-red-100"><LogOut size={18} /></button>
-        </div>
         </div>
         <div className="grid grid-cols-3 gap-2 mt-5">
           <MetricPill icon={Shield} label="Status" value={providerStatusText(currentProviderStatus)} tone={currentProviderStatus === 'approved' ? 'text-emerald-700 bg-emerald-50 border-emerald-100 dark:text-emerald-400 dark:bg-emerald-950/30 dark:border-emerald-900/40' : 'text-amber-700 bg-amber-50 border-amber-100 dark:text-amber-400 dark:bg-amber-950/30 dark:border-amber-900/40'} />
@@ -314,7 +307,7 @@ export default function DoctorDashboardView({ user, doctor, logout, showToast, o
       {currentProviderStatus !== 'approved' && (
         <div className="rounded-lg border border-amber-100 dark:border-amber-900/30 bg-amber-50 dark:bg-amber-950/20 p-4 text-amber-800 dark:text-amber-400">
           <div className="flex items-start gap-3">
-            <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+            <AlertTriangle size={18} strokeWidth={2.2} className="mt-0.5 shrink-0" />
             <div>
               <p className="text-sm font-black">Profile under review</p>
               <p className="mt-1 text-xs font-bold leading-relaxed">Patients can book after admin approval. Keep your fee, UPI, clinic, and working calendar ready.</p>
@@ -327,7 +320,7 @@ export default function DoctorDashboardView({ user, doctor, logout, showToast, o
         <div className="flex items-center justify-between gap-3">
           <SectionHeader eyebrow="Profile" title="Provider details" />
           <button type="button" onClick={() => { triggerHaptic('selection'); setProfileOpen(prev => !prev); }} className="pro-icon-button pressable border border-slate-200 dark:border-slate-800 dark:bg-slate-900/60 dark:text-white">
-            {profileOpen ? <X size={18} /> : <Edit3 size={18} />}
+            {profileOpen ? <X size={18} strokeWidth={2.2} /> : <Edit3 size={18} strokeWidth={2.2} />}
           </button>
         </div>
         {!profileOpen ? (
@@ -340,10 +333,10 @@ export default function DoctorDashboardView({ user, doctor, logout, showToast, o
             <button
               type="button"
               onClick={() => { triggerHaptic('selection'); setProfileOpen(true); }}
-              className="pressable flex w-full items-center justify-between rounded-lg border border-emerald-100 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-950/20 px-4 py-3 text-left text-sm font-black text-emerald-800 dark:text-emerald-400 transition-colors hover:bg-emerald-100 dark:hover:bg-emerald-950/40"
+              className="pressable flex w-full items-center justify-between rounded-lg border border-emerald-100 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-950/20 px-4 py-3 text-left text-sm font-black text-emerald-800 dark:text-emerald-400 transition-colors hover:bg-emerald-100 dark:hover:bg-emerald-950/44"
             >
-              <span className="inline-flex items-center gap-2"><Calendar size={16} /> Manage working dates</span>
-              <ChevronRight size={17} />
+              <span className="inline-flex items-center gap-2"><Calendar size={16} strokeWidth={2.2} /> Manage working dates</span>
+              <ChevronRight size={17} strokeWidth={2.2} />
             </button>
           </div>
         ) : (
@@ -378,7 +371,7 @@ export default function DoctorDashboardView({ user, doctor, logout, showToast, o
                     onClick={withHaptic(() => setCalendarMonth(prev => subtractMonths(prev, 1)), 'selection')}
                     className="pro-icon-button pressable h-9 w-9 border border-slate-200 dark:border-slate-800 dark:bg-slate-900/60 dark:text-white"
                   >
-                    <ChevronLeft size={16} />
+                    <ChevronLeft size={16} strokeWidth={2.2} />
                   </button>
                   <button
                     type="button"
@@ -386,7 +379,7 @@ export default function DoctorDashboardView({ user, doctor, logout, showToast, o
                     onClick={withHaptic(() => setCalendarMonth(prev => addMonths(prev, 1)), 'selection')}
                     className="pro-icon-button pressable h-9 w-9 border border-slate-200 dark:border-slate-800 dark:bg-slate-900/60 dark:text-white"
                   >
-                    <ChevronRight size={16} />
+                    <ChevronRight size={16} strokeWidth={2.2} />
                   </button>
                 </div>
               </div>
@@ -450,7 +443,7 @@ export default function DoctorDashboardView({ user, doctor, logout, showToast, o
                         onClick={() => { triggerHaptic('selection'); setDateSlots(prev => prev.filter(item => item !== slot)); }}
                         className="pressable rounded-md p-0.5 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900"
                       >
-                        <X size={13} />
+                        <X size={13} strokeWidth={2.2} />
                       </button>
                     </span>
                   ))}
@@ -490,12 +483,12 @@ export default function DoctorDashboardView({ user, doctor, logout, showToast, o
                     className="pressable inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-cyan-100 dark:border-slate-800 bg-cyan-50 dark:bg-slate-900 text-cyan-700 dark:text-cyan-400 hover:bg-cyan-100 dark:hover:bg-cyan-950"
                     title="Add time slot"
                   >
-                    <Plus size={18} />
+                    <Plus size={18} strokeWidth={2.2} />
                   </button>
                 </div>
 
                 <Button onClick={saveSelectedDateSlots} variant="accent" haptic="success" className="w-full" disabled={savingSchedule || isPastDate(selectedDate)}>
-                  {savingSchedule ? <Loader2 className="animate-spin" /> : <Save size={16} />}
+                  {savingSchedule ? <Loader2 size={16} strokeWidth={2.2} className="animate-spin" /> : <Save size={16} strokeWidth={2.2} />}
                   {dateSlots.length ? 'Publish Working Date' : 'Remove Date From Calendar'}
                 </Button>
               </div>
@@ -507,30 +500,32 @@ export default function DoctorDashboardView({ user, doctor, logout, showToast, o
                     No working dates are live yet.
                   </div>
                 ) : (
-                  availabilityRows.map((row) => (
-                    <div key={row.work_date} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-black text-slate-950 dark:text-white">{parseDateOnly(row.work_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</p>
-                        <p className="truncate text-xs font-bold text-slate-500 dark:text-slate-400">{row.slots.join(', ')}</p>
+                  <div className="space-y-2 stagger-list">
+                    {availabilityRows.map((row) => (
+                      <div key={row.work_date} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-black text-slate-950 dark:text-white">{parseDateOnly(row.work_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</p>
+                          <p className="truncate text-xs font-bold text-slate-500 dark:text-slate-400">{row.slots.join(', ')}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={withHaptic(() => removeWorkingDate(row.work_date), 'warning')}
+                          disabled={savingSchedule}
+                          className="pressable inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/45 disabled:opacity-50"
+                          title={`Remove ${shortDate(row.work_date)}`}
+                        >
+                          <Trash2 size={16} strokeWidth={2.2} />
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={withHaptic(() => removeWorkingDate(row.work_date), 'warning')}
-                        disabled={savingSchedule}
-                        className="pressable inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/45 disabled:opacity-50"
-                        title={`Remove ${shortDate(row.work_date)}`}
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  ))
+                    ))}
+                  </div>
                 )}
               </div>
 
             </div>
 
             <Button onClick={saveDoctorProfile} variant="accent" haptic="success" className="w-full mt-6" disabled={savingProfile}>
-              {savingProfile ? <Loader2 className="animate-spin" /> : <Save size={16} />} Save Provider Profile
+              {savingProfile ? <Loader2 size={16} strokeWidth={2.2} className="animate-spin" /> : <Save size={16} strokeWidth={2.2} />} Save Provider Profile
             </Button>
           </div>
         )}
@@ -538,43 +533,49 @@ export default function DoctorDashboardView({ user, doctor, logout, showToast, o
       
       <div className="space-y-6">
         <SectionHeader eyebrow="Today" title="Appointment requests" />
-        {pendingAppointments.map(apt => (
-          <div key={apt.id} className="pro-card p-5">
-            <div className="flex items-start justify-between gap-4 mb-5">
-              <div>
-                <h3 className="font-black text-lg text-slate-950 dark:text-white mb-1">{apt.patient_name}</h3>
-                <p className="text-sm font-bold text-slate-500 dark:text-slate-450 flex items-center gap-2"><Calendar size={14}/> {shortDate(apt.appointment_date)} at {apt.slot}</p>
+        {pendingAppointments.length > 0 && (
+          <div className="space-y-5 stagger-list">
+            {pendingAppointments.map(apt => (
+              <div key={apt.id} className="pro-card p-5">
+                <div className="flex items-start justify-between gap-4 mb-5">
+                  <div>
+                    <h3 className="font-black text-lg text-slate-950 dark:text-white mb-1">{apt.patient_name}</h3>
+                    <p className="text-sm font-bold text-slate-500 dark:text-slate-450 flex items-center gap-2"><Calendar size={14} strokeWidth={2.2}/> {shortDate(apt.appointment_date)} at {apt.slot}</p>
+                  </div>
+                  <Badge type="warning">New</Badge>
+                </div>
+                <AppointmentTimeline events={appointmentEvents[String(apt.id)] || []} limit={2} compact />
+                <div className="flex gap-3 mt-4">
+                  <Button onClick={() => handleAction(apt.id, 'accept')} variant="accent" haptic="success" className="flex-1 py-3 text-sm shadow-none"><Check size={16} strokeWidth={2.2}/> Accept</Button>
+                  <Button onClick={() => handleAction(apt.id, 'reject')} variant="secondary" haptic="warning" className="flex-1 py-3 text-sm"><X size={16} strokeWidth={2.2}/> Decline</Button>
+                </div>
               </div>
-              <Badge type="warning">New</Badge>
-            </div>
-            <AppointmentTimeline events={appointmentEvents[String(apt.id)] || []} limit={2} compact />
-            <div className="flex gap-3 mt-4">
-              <Button onClick={() => handleAction(apt.id, 'accept')} variant="accent" haptic="success" className="flex-1 py-3 text-sm shadow-none"><Check size={16}/> Accept</Button>
-              <Button onClick={() => handleAction(apt.id, 'reject')} variant="secondary" haptic="warning" className="flex-1 py-3 text-sm"><X size={16}/> Decline</Button>
-            </div>
+            ))}
           </div>
-        ))}
+        )}
         {pendingAppointments.length === 0 && (
           <div className="text-center py-12 pro-card border-dashed">
-            <ClipboardCheck size={34} className="mx-auto text-slate-300 dark:text-slate-700 mb-4" />
+            <ClipboardCheck size={34} strokeWidth={2.2} className="mx-auto text-slate-300 dark:text-slate-700 mb-4" />
             <p className="text-slate-500 dark:text-slate-400 font-bold">No pending appointment requests.</p>
           </div>
         )}
         {appointments.filter(a => a.status !== 'Pending Approval').length > 0 && (
           <div className="space-y-3">
             <SectionHeader eyebrow="History" title="Handled requests" />
-            {appointments.filter(a => a.status !== 'Pending Approval').map(apt => (
-              <div key={apt.id} className="pro-card p-4 space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="font-black text-slate-950 dark:text-white">{apt.patient_name}</p>
-                    <p className="text-xs font-bold text-slate-500 dark:text-slate-400">{shortDate(apt.appointment_date)} at {apt.slot}</p>
+            <div className="space-y-3 stagger-list">
+              {appointments.filter(a => a.status !== 'Pending Approval').map(apt => (
+                <div key={apt.id} className="pro-card p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-black text-slate-950 dark:text-white">{apt.patient_name}</p>
+                      <p className="text-xs font-bold text-slate-500 dark:text-slate-400">{shortDate(apt.appointment_date)} at {apt.slot}</p>
+                    </div>
+                    <Badge type={apt.status === 'Accepted' ? 'success' : 'warning'}>{apt.status}</Badge>
                   </div>
-                  <Badge type={apt.status === 'Accepted' ? 'success' : 'warning'}>{apt.status}</Badge>
+                  <AppointmentTimeline events={appointmentEvents[String(apt.id)] || []} limit={2} compact />
                 </div>
-                <AppointmentTimeline events={appointmentEvents[String(apt.id)] || []} limit={2} compact />
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
       </div>

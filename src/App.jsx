@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { PushNotifications } from '@capacitor/push-notifications';
-import { Loader2, CheckCircle, X } from 'lucide-react';
+import { Loader2, CheckCircle } from 'lucide-react';
 import AppShell from './components/AppShell';
 import NotificationCenter from './components/NotificationCenter';
 import LandingView from './views/LandingView';
@@ -678,7 +678,7 @@ export default function App() {
        <div className="min-h-screen flex items-center justify-center app-canvas">
          <div className="pro-card p-6 flex items-center gap-4 dark:border-slate-800 dark:bg-slate-950">
            <img src={APP_ICON} alt="Rapha'l" className="w-12 h-12 rounded-lg object-cover" />
-           <Loader2 className="animate-spin text-cyan-500" size={28} strokeWidth={3} />
+           <Loader2 className="animate-spin text-cyan-500" size={28} strokeWidth={2.2} />
          </div>
        </div>
      );
@@ -755,7 +755,7 @@ export default function App() {
                      {view === 'success' && (
                         <div className="flex flex-col items-center justify-center text-center p-6 h-full app-screen">
                            <div className="pro-card p-8 w-full dark:border-slate-800 dark:bg-slate-950">
-                             <div className="w-24 h-24 bg-gradient-to-br from-emerald-500 to-cyan-500 rounded-lg flex items-center justify-center mb-6 mx-auto shadow-xl shadow-emerald-500/20 animate-in zoom-in-75 duration-300"><CheckCircle size={48} className="text-white" /></div>
+                             <div className="w-24 h-24 bg-gradient-to-br from-emerald-500 to-cyan-500 rounded-lg flex items-center justify-center mb-6 mx-auto shadow-xl shadow-emerald-500/20 animate-in zoom-in-75 duration-300"><CheckCircle size={48} strokeWidth={2.2} className="text-white" /></div>
                              <h1 className="text-3xl font-black mb-3 text-slate-950 dark:text-white">Request sent</h1>
                              <p className="text-slate-500 dark:text-slate-400 font-semibold mb-8">Your booking request is waiting for the doctor to approve it.</p>
                              <Button onClick={() => setView('dashboard')} variant="accent" className="w-full mb-3 shadow-none">View Appointments</Button>

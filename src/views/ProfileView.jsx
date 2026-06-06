@@ -57,9 +57,8 @@ export default function ProfileView({ user, logout, onSaveProfile }) {
           </div>
           <div className="flex items-center gap-2">
             <button type="button" onClick={() => { triggerHaptic('selection'); setIsEditing(prev => !prev); }} className="pro-icon-button pressable border border-slate-200 dark:border-slate-800 dark:bg-slate-900/60 dark:text-white">
-              {isEditing ? <X size={18} /> : <Edit3 size={18} />}
+              {isEditing ? <X size={18} strokeWidth={2.2} /> : <Edit3 size={18} strokeWidth={2.2} />}
             </button>
-            <button type="button" onClick={withHaptic(logout, 'warning')} className="pro-icon-button pressable text-red-600 bg-red-50 border-red-100 dark:bg-red-950/20 dark:text-red-400 dark:border-red-900/40 hover:bg-red-100"><LogOut size={18} /></button>
           </div>
         </div>
 
@@ -68,7 +67,7 @@ export default function ProfileView({ user, logout, onSaveProfile }) {
             <Avatar name={user?.name} specialty="General Physician" size="lg" />
             <div>
               <h2 className="text-2xl font-black text-slate-950 dark:text-white">{user?.name}</h2>
-              <Badge type="info"><BadgeCheck size={12} /> {user?.role || 'patient'} account</Badge>
+              <Badge type="info"><BadgeCheck size={12} strokeWidth={2.2} /> {user?.role || 'patient'} account</Badge>
             </div>
           </div>
 
@@ -83,7 +82,7 @@ export default function ProfileView({ user, logout, onSaveProfile }) {
             </div>
             <div>
               <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase mb-1.5">Email Address</label>
-              <div className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-lg px-5 py-4 text-slate-800 dark:text-slate-300 font-bold text-sm break-all">{user?.email || 'N/A'}</div>
+              <div className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-lg px-5 py-4 text-slate-800 dark:text-slate-350 font-bold text-sm break-all">{user?.email || 'N/A'}</div>
             </div>
             {isEditing && (
               <>
@@ -105,7 +104,7 @@ export default function ProfileView({ user, logout, onSaveProfile }) {
             )}
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-lg border border-cyan-100 dark:border-cyan-950/60 bg-cyan-50 dark:bg-cyan-950/20 p-4 text-cyan-700 dark:text-cyan-400">
-                <PhoneCall size={16} />
+                <PhoneCall size={16} strokeWidth={2.2} />
                 {isEditing ? (
                   <input value={form.phone} onChange={(e) => updateField('phone', e.target.value)} className="mt-2 w-full bg-white/70 dark:bg-slate-850 rounded-md px-2 py-2 text-xs font-black outline-none text-slate-900 dark:text-white" placeholder="Phone" />
                 ) : (
@@ -113,7 +112,7 @@ export default function ProfileView({ user, logout, onSaveProfile }) {
                 )}
               </div>
               <div className="rounded-lg border border-emerald-100 dark:border-emerald-950/60 bg-emerald-50 dark:bg-emerald-950/20 p-4 text-emerald-700 dark:text-emerald-400">
-                <MapPinned size={16} />
+                <MapPinned size={16} strokeWidth={2.2} />
                 {isEditing ? (
                   <input value={form.district} onChange={(e) => updateField('district', e.target.value)} className="mt-2 w-full bg-white/70 dark:bg-slate-850 rounded-md px-2 py-2 text-xs font-black outline-none text-slate-900 dark:text-white" placeholder="District" />
                 ) : (
@@ -129,10 +128,13 @@ export default function ProfileView({ user, logout, onSaveProfile }) {
               </div>
             )}
             {isEditing && (
-              <Button onClick={saveProfile} variant="accent" haptic="success" className="w-full" disabled={saving}>
-                {saving ? <Loader2 className="animate-spin" /> : <Save size={16} />} Save Profile
+              <Button onClick={saveProfile} variant="accent" haptic="success" className="w-full mt-6" disabled={saving}>
+                {saving ? <Loader2 size={16} strokeWidth={2.2} className="animate-spin" /> : <Save size={16} strokeWidth={2.2} />} Save Profile
               </Button>
             )}
+            <button onClick={withHaptic(logout, 'warning')} className="pressable flex w-full items-center justify-center gap-2 rounded-lg border border-red-100 bg-red-50 py-3 text-sm font-semibold text-red-600 transition-colors hover:bg-red-100/60 dark:bg-red-950/20 dark:text-red-400 dark:border-red-950/30 dark:hover:bg-red-950/40">
+              <LogOut size={16} strokeWidth={2.2} /> Logout
+            </button>
           </div>
         </div>
       </div>

@@ -21,7 +21,7 @@ const AuthField = ({ icon: Icon, className = '', children, ...props }) => (
   <label className="group relative block">
     {Icon && (
       <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-cyan-600">
-        <Icon size={19} />
+        <Icon size={19} strokeWidth={2.2} />
       </span>
     )}
     <input className={`${Icon ? iconInputClass : inputClass} ${className}`} {...props} />
@@ -37,7 +37,7 @@ const SubmitButton = ({ children, loading, onClick, haptic = 'medium', ...props 
     disabled={loading}
     {...props}
   >
-    {loading ? <Loader2 size={20} className="animate-spin" /> : children}
+    {loading ? <Loader2 size={20} strokeWidth={2.2} className="animate-spin" /> : children}
   </button>
 );
 
@@ -50,7 +50,7 @@ const ConfigNotice = ({ hasSupabaseConfig, supabaseConfigStatus }) => {
 
     return (
       <div className="mb-4 flex items-center justify-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
-        <BadgeCheck size={14} />
+        <BadgeCheck size={14} strokeWidth={2.2} />
         <span>Live backend connected</span>
       </div>
     );
@@ -245,7 +245,7 @@ export default function LoginView({
           onClick={withHaptic(() => setView(selectedDoctor ? 'detail' : 'landing'), 'selection')}
           className="pro-icon-button pressable h-10 w-10 border border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md"
         >
-          <ArrowLeft size={20} className="text-slate-700 dark:text-slate-300" />
+          <ArrowLeft size={20} strokeWidth={2.2} className="text-slate-700 dark:text-slate-300" />
         </button>
       </div>
 
@@ -312,7 +312,7 @@ export default function LoginView({
                   onClick={() => { triggerHaptic('selection'); setShowPassword((value) => !value); }}
                   className="pressable absolute right-4 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-cyan-700"
                 >
-                  {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                  {showPassword ? <EyeOff size={19} strokeWidth={2.2} /> : <Eye size={19} strokeWidth={2.2} />}
                 </button>
               </AuthField>
 
@@ -334,7 +334,7 @@ export default function LoginView({
                   onClick={() => switchMode('register')}
                   className="pressable flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all duration-200 hover:border-slate-300 hover:bg-slate-50"
                 >
-                  Create new account <ArrowRight size={16} />
+                  Create new account <ArrowRight size={16} strokeWidth={2.2} />
                 </button>
               </div>
             </form>
@@ -387,7 +387,7 @@ export default function LoginView({
                     onClick={() => { triggerHaptic('selection'); setRole(id); }}
                     className={`pressable flex h-11 items-center justify-center gap-2 rounded-md text-sm font-semibold transition-all duration-200 ${role === id ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-white hover:text-slate-700'}`}
                   >
-                    {React.createElement(Icon, { size: 16 })}
+                    {React.createElement(Icon, { size: 16, strokeWidth: 2.2 })}
                     {label}
                   </button>
                 ))}
@@ -466,7 +466,7 @@ export default function LoginView({
                   onClick={() => { triggerHaptic('selection'); setShowPassword((value) => !value); }}
                   className="pressable absolute right-4 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-cyan-700"
                 >
-                  {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                  {showPassword ? <EyeOff size={19} strokeWidth={2.2} /> : <Eye size={19} strokeWidth={2.2} />}
                 </button>
               </AuthField>
 
