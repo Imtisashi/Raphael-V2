@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  ArrowLeft,
   ArrowRight,
   BadgeCheck,
   Eye,
@@ -75,6 +76,8 @@ export default function LoginView({
   friendlyNetworkError,
   specialtyOptions = [],
   appIcon,
+  selectedDoctor,
+  setView,
 }) {
   const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
@@ -235,6 +238,17 @@ export default function LoginView({
 
   return (
     <div className="auth-screen app-scroll-region h-full min-h-0 w-full overflow-y-auto px-5 py-8 font-sans">
+      {/* Contextual Back Button */}
+      <div className="absolute top-4 left-4 z-10">
+        <button
+          type="button"
+          onClick={withHaptic(() => setView(selectedDoctor ? 'detail' : 'landing'), 'selection')}
+          className="pro-icon-button pressable h-10 w-10 border border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md"
+        >
+          <ArrowLeft size={20} className="text-slate-700 dark:text-slate-300" />
+        </button>
+      </div>
+
       <div className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-md flex-col justify-center">
         <div className="login-brand-panel mb-8 text-center view-panel">
           {appIcon && (

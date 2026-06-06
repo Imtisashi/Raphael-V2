@@ -2,12 +2,109 @@
 > 123@0.0.0 dev
 > vite
 
+[2m7:05:51 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m Re-optimizing dependencies because lockfile has changed
 Port 5173 is in use, trying another one...
 Port 5174 is in use, trying another one...
 Port 5175 is in use, trying another one...
+Port 5176 is in use, trying another one...
 
-  [32m[1mROLLDOWN-VITE[22m v7.2.5[39m  [2mready in [0m[1m1115[22m[2m[0m ms[22m
+  [32m[1mROLLDOWN-VITE[22m v7.2.5[39m  [2mready in [0m[1m12754[22m[2m[0m ms[22m
 
-  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5176[22m/[39m
-[2m  [32m➜[39m  [1mNetwork[22m[2m: [2m8:12:23 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mindex.html[22m
-[2m8:21:48 AM[22m [36m[1m[vite][22m[39[2m8:21:48 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39[2m8:29:04 AM[22m [36m[1m[vite][22m[39[2m8:29:04 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mindex.html[22m
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5177[22m/[39m
+[2m  [32m➜[39m  [1mNetwork[22m[2m: use [22m[1m--host[22m[2m to expose[22m
+[31m(!) Failed to run dependency scan. Skipping dependency pre-bundling. Error: [31m  Failed to scan for dependencies from entri[2m2:04:18 AM[22m [36m[1m[vite][22m[39[2m2:04:18 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid[2m2:04:19 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/google219ac5926a4c8ee7.html[22m
+[2m2:04:19 AM[22m [36m[1m[vite][22m[39[2m2:04:26 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/google219ac5926a4c8ee7.html[22m
+[2m2:04:26 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
+[2m2:18:50 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid[2m2:18:50 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
+[2m2:18:50 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/google219ac5926a4c8ee7.html[22m
+[2m2:18:50 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
+[2m2:18:50 AM[22m [36m[1m[vite][22m[39m [90m[2m(clien[2m2:18:50 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/google219ac5926a4c8ee7.html[22m
+[2m2:31:52 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/google219ac5926a4c8ee7.html[22m
+[2m2:31:52 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
+[2m2:31:52 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid[2m2:31:52 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/google219ac5926a4c8ee7.html[22m
+[2m2:31:52 AM[22m [36m[1m[vite][22m[39[2m10:48:49 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroi[2m10:48:49 AM[22m [36m[1m[vite][22m[39[2m10:48:49 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/as[2m10:48:49 AM[22m [36m[1m[vite][22m[39[2m10:48:49 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/google219ac5926a4c8ee7.html[22m
+[2m10:48:49 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
+[2m11:32:30 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/google219ac5926a4c8ee7.html[22m
+[2m11:32:31 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
+[2m11:32:31 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/google219ac5926a4c8ee7.html[22m
+[2m11:32:31 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
+[2m1:56:07 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid[2m1:56:07 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
+[2m1:56:07 PM[22m [36m[1m[vite][22m[39m [90m[2m(clien[2m1:56:08 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid[2m1:56:08 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/google219ac5926a4c8ee7.html[22m
+[2m1:56:08 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
+[38;5;249me[0m[38;5;249mw[0m[38;5;249m'[0m[38;5;249m;[0m
+ [38;5;240m    │[0m        ─────┬────  
+ [38;5;240m    │[0m             ╰────── `SearchView` has already been declared here
+ [38;5;240m    │[0m 
+ [38;5;246m855 │[0m [38;5;249mf[0m[38;5;249mu[0m[38;5;249mn[0m[38;5;249mc[0m[38;5;249mt[0m[38;5;249mi[0m[38;5;249mo[0m[38;5;249mn[0m[38;5;249m [0mSearchView[38;5;249m([0m[38;5;249m{[0m[38;5;249m [0m[38;5;249ms[0m[38;5;249me[0m[38;5;249ma[0m[38;5;249mr[0m[38;5;249mc[0m[38;5;249mh[0m[38;5;249mQ[0m[38;5;249mu[0m[38;5;249me[0m[38;5;249mr[0m[38;5;249my[0m[38;5;249m,[0m[38;5;249m [0m[38;5;249ms[0m[38;5;249me[0m[38;5;249mt[0m[38;5;249mS[0m[38;5;249me[0m[38;5;249ma[0m[38;5;249mr[0m[38;5;249mc[0m[38;5;249mh[0m[38;5;249mQ[0m[38;5;249mu[0m[38;5;249me[0m[38;5;249mr[0m[38;5;249my[0m[38;5;249m,[0m[38;5;249m [0m[38;5;249md[0m[38;5;249mo[0m[38;5;249mc[0m[38;5;249mt[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249ms[0m[38;5;249m,[0m[38;5;249m [0m[38;5;249ms[0m[38;5;249me[0m[38;5;249mt[0m[38;5;249mV[0m[38;5;249mi[0m[38;5;249me[0m[38;5;249mw[0m[38;5;249m,[0m[38;5;249m [0m[38;5;249ms[0m[38;5;249me[0m[38;5;249mt[0m[38;5;249mS[0m[38;5;249me[0m[38;5;249ml[0m[38;5;249me[0m[38;5;249mc[0m[38;5;249mt[0m[38;5;249me[0m[38;5;249md[0m[38;5;249mD[0m[38;5;249mo[0m[38;5;249mc[0m[38;5;249mt[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249m,[0m[38;5;249m [0m[38;5;249ma[0m[38;5;249mc[0m[38;5;249mt[0m[38;5;249mi[0m[38;5;249mv[0m[38;5;249me[0m[38;5;249mC[0m[38;5;249ma[0m[38;5;249mt[0m[38;5;249me[0m[38;5;249mg[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249my[0m[38;5;249m,[0m[38;5;249m [0m[38;5;249ms[0m[38;5;249me[0m[38;5;249mt[0m[38;5;249mA[0m[38;5;249mc[0m[38;5;249mt[0m[38;5;249mi[0m[38;5;249mv[0m[38;5;249me[0m[38;5;249mC[0m[38;5;249ma[0m[38;5;249mt[0m[38;5;249me[0m[38;5;249mg[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249my[0m[38;5;249m [0m[38;5;249m}[0m[38;5;249m)[0m[38;5;249m [0m[38;5;249m{[0m
+ [38;5;240m    │[0m          ─────┬────  
+ [38;5;240m    │[0m               ╰────── It can not be redeclared here
+[38;5;246m─────╯[0m
+
+[31m[PARSE_ERROR] Error:[0m Identifier `DoctorDetailView` has already been declared
+     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/App.jsx:18:8 [38;5;246m][0m
+     [38;5;246m│[0m
+ [38;5;246m 18 │[0m [38;5;249mi[0m[38;5;249mm[0m[38;5;249mp[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249mt[0m[38;5;249m [0mDoctorDetailView[38;5;249m [0m[38;5;249mf[0m[38;5;249mr[0m[38;5;249mo[0m[38;5;249mm[0m[38;5;249m [0m[38;5;249m'[0m[38;5;249m.[0m[38;5;249m/[0m[38;5;249mv[0m[38;5;249mi[0m[38;5;249me[0m[38;5;249mw[0m[38;5;249ms[0m[38;5;249m/[0m[38;5;249mD[0m[38;5;249mo[0m[38;5;249mc[0m[38;5;249mt[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249mD[0m[38;5;249me[0m[38;5;249mt[0m[38;5;249ma[0m[38;5;249mi[0m[38;5;249ml[0m[38;5;249mV[0m[38;5;249mi[0m[38;5;249me[0m[38;5;249mw[0m[38;5;249m'[0m[38;5;249m;[0m
+ [38;5;240m    │[0m        ────────┬───────  
+ [38;5;240m    │[0m                ╰───────── `DoctorDetailView` has already been declared here
+ [38;5;240m    │[0m 
+ [38;5;246m901 │[0m [38;5;249mf[0m[38;5;249mu[0m[38;5;249mn[0m[38;5;249mc[0m[38;5;249mt[0m[38;5;249mi[0m[38;5;249mo[0m[38;5;249mn[0m[38;5;249m [0mDoctorDetailView[38;5;249m([0m[38;5;249m{[0m[38;5;249m [0m[38;5;249md[0m[38;5;249mo[0m[38;5;249mc[0m[38;5;249mt[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249m,[0m[38;5;249m [0m[38;5;249ms[0m[38;5;249me[0m[38;5;249mt[0m[38;5;249mV[0m[38;5;249mi[0m[38;5;249me[0m[38;5;249mw[0m[38;5;249m,[0m[38;5;249m [0m[38;5;249ms[0m[38;5;249me[0m[38;5;249ml[0m[38;5;249me[0m[38;5;249mc[0m[38;5;249mt[0m[38;5;249me[0m[38;5;249md[0m[38;5;249mS[0m[38;5;249ml[0m[38;5;249mo[0m[38;5;249mt[0m[38;5;249m,[0m[38;5;249m [0m[38;5;249ms[0m[38;5;249me[0m[38;5;249mt[0m[38;5;249mS[0m[38;5;249me[0m[38;5;249ml[0m[38;5;249me[0m[38;5;249mc[0m[38;5;249mt[0m[38;5;249me[0m[38;5;249md[0m[38;5;249mS[0m[38;5;249ml[0m[38;5;249mo[0m[38;5;249mt[0m[38;5;249m,[0m[38;5;249m [0m[38;5;249ms[0m[38;5;249me[0m[38;5;249ml[0m[38;5;249me[0m[38;5;249mc[0m[38;5;249mt[0m[38;5;249me[0m[38;5;249md[0m[38;5;249mD[0m[38;5;249ma[0m[38;5;249mt[0m[38;5;249me[0m[38;5;249m,[0m[38;5;249m [0m[38;5;249mh[0m[38;5;249ma[0m[38;5;249mn[0m[38;5;249md[0m[38;5;249ml[0m[38;5;249me[0m[38;5;249mB[0m[38;5;249mo[0m[38;5;249mo[0m[38;5;249mk[0m[38;5;249m [0m[38;5;249m}[0m[38;5;249m)[0m[38;5;249m [0m[38;5;249m{[0m
+ [38;5;240m    │[0m          ────────┬───────  
+ [38;5;240m    │[0m                  ╰───────── It can not be redeclared here
+[38;5;246m─────╯[0m
+
+[31m[PARSE_ERROR] Error:[0m Identifier `DashboardView` has already been declared
+      [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/App.jsx:19:8 [38;5;246m][0m
+      [38;5;246m│[0m
+ [38;5;246m  19 │[0m [38;5;249mi[0m[38;5;249mm[0m[38;5;249mp[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249mt[0m[38;5;249m [0mDashboardView[38;5;249m [0m[38;5;249mf[0m[38;5;249mr[0m[38;5;249mo[0m[38;5;249mm[0m[38;5;249m [0m[38;5;249m'[0m[38;5;249m.[0m[38;5;249m/[0m[38;5;249mv[0m[38;5;249mi[0m[38;5;249me[0m[38;5;249mw[0m[38;5;249ms[0m[38;5;249m/[0m[38;5;249mD[0m[38;5;249ma[0m[38;5;249ms[0m[38;5;249mh[0m[38;5;249mb[0m[38;5;249mo[0m[38;5;249ma[0m[38;5;249mr[0m[38;5;249md[0m[38;5;249mV[0m[38;5;249mi[0m[38;5;249me[0m[38;5;249mw[0m[38;5;249m'[0m[38;5;249m;[0m
+ [38;5;240m     │[0m        ──────┬──────  
+ [38;5;240m     │[0m              ╰──────── `DashboardView` has already been declared here
+ [38;5;240m     │[0m 
+ [38;5;246m1055 │[0m [38;5;249mf[0m[38;5;249mu[0m[38;5;249mn[0m[38;5;249mc[0m[38;5;249mt[0m[38;5;249mi[0m[38;5;249mo[0m[38;5;249mn[0m[38;5;249m [0mDashboardView[38;5;249m([0m[38;5;249m{[0m[38;5;249m [0m[38;5;249ma[0m[38;5;249mp[0m[38;5;249mp[0m[38;5;249mo[0m[38;5;249mi[0m[38;5;249mn[0m[38;5;249mt[0m[38;5;249mm[0m[38;5;249me[0m[38;5;249mn[0m[38;5;249mt[0m[38;5;249ms[0m[38;5;249m,[0m[38;5;249m [0m[38;5;249ma[0m[38;5;249mp[0m[38;5;249mp[0m[38;5;249mo[0m[38;5;249mi[0m[38;5;249mn[0m[38;5;249mt[0m[38;5;249mm[0m[38;5;249me[0m[38;5;249mn[0m[38;5;249mt[0m[38;5;249mE[0m[38;5;249mv[0m[38;5;249me[0m[38;5;249mn[0m[38;5;249mt[0m[38;5;249ms[0m[38;5;249m [0m[38;5;249m=[0m[38;5;249m [0m[38;5;249m{[0m[38;5;249m}[0m[38;5;249m,[0m[38;5;249m [0m[38;5;249md[0m[38;5;249mo[0m[38;5;249mc[0m[38;5;249mt[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249ms[0m[38;5;249m [0m[38;5;249m=[0m[38;5;249m [0m[38;5;249m[[0m[38;5;249m][0m[38;5;249m,[0m[38;5;249m [0m[38;5;249mo[0m[38;5;249mn[0m[38;5;249mO[0m[38;5;249mp[0m[38;5;249me[0m[38;5;249mn[0m[38;5;249mU[0m[38;5;249mp[0m[38;5;249mi[0m[38;5;249m,[0m[38;5;249m [0m[38;5;249mo[0m[38;5;249mn[0m[38;5;249mS[0m[38;5;249mu[0m[38;5;249mb[0m[38;5;249mm[0m[38;5;249mi[0m[38;5;249mt[0m[38;5;249mP[0m[38;5;249ma[0m[38;5;249my[0m[38;5;249mm[0m[38;5;249me[0m[38;5;249mn[0m[38;5;249mt[0m[38;5;249m,[0m[38;5;249m [0m[38;5;249mo[0m[38;5;249mn[0m[38;5;249mP[0m[38;5;249ma[0m[38;5;249my[0m[38;5;249mC[0m[38;5;249ma[0m[38;5;249ms[0m[38;5;249mh[0m[38;5;249m,[0m[38;5;249m [0m[38;5;249mp[0m[38;5;249ml[0m[38;5;249ma[0m[38;5;249mt[0m[38;5;249mf[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249mm[0m[38;5;249mF[0m[38;5;249me[0m[38;5;249me[0m[38;5;249mP[0m[38;5;249me[0m[38;5;249mr[0m[38;5;249mc[0m[38;5;249me[0m[38;5;249mn[0m[38;5;249mt[0m[38;5;249m [0m[38;5;249m=[0m[38;5;249m [0m[38;5;249mD[0m[38;5;249mE[0m[38;5;249mF[0m[38;5;249mA[0m[38;5;249mU[0m[38;5;249mL[0m[38;5;249mT[0m[38;5;249m_[0m[38;5;249mP[0m[38;5;249mL[0m[38;5;249mA[0m[38;5;249mT[0m[38;5;249mF[0m[38;5;249mO[0m[38;5;249mR[0m[38;5;249mM[0m[38;5;249m_[0m[38;5;249mF[0m[38;5;249mE[0m[38;5;249mE[0m[38;5;249m_[0m[38;5;249mP[0m[38;5;249mE[0m[38;5;249mR[0m[38;5;249mC[0m[38;5;249mE[0m[38;5;249mN[0m[38;5;249mT[0m[38;5;249m [0m[38;5;249m}[0m[38;5;249m)[0m[38;5;249m [0m[38;5;249m{[0m
+ [38;5;240m     │[0m          ──────┬──────  
+ [38;5;240m     │[0m                ╰──────── It can not be redeclared here
+[38;5;246m──────╯[0m
+
+[31m[PARSE_ERROR] Error:[0m Identifier `ProfileView` has already been declared
+      [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m src/App.jsx:20:8 [38;5;246m][0m
+      [38;5;246m│[0m
+ [38;5;246m  20 │[0m [38;5;249mi[0m[38;5;249mm[0m[38;5;249mp[0m[38;5;249mo[0m[38;5;249mr[0m[38;5;249mt[0m[38;5;249m [0mProfileView[38;5;249m [0m[38;5;249mf[0m[38;5;249mr[0m[38;5;249mo[0m[38;5;249mm[0m[38;5;249m [0m[38;5;249m'[0m[38;5;249m.[0m[38;5;249m/[0m[38;5;249mv[0m[38;5;249mi[0m[38;5;249me[0m[38;5;249mw[0m[38;5;249ms[0m[38;5;249m/[0m[38;5;249mP[0m[38;5;249mr[0m[38;5;249mo[0m[38;5;249mf[0m[38;5;249mi[0m[38;5;249ml[0m[38;5;249me[0m[38;5;249mV[0m[38;5;249mi[0m[38;5;249me[0m[38;5;249mw[0m[38;5;249m'[0m[38;5;249m;[0m
+ [38;5;240m     │[0m        ─────┬─────  
+ [38;5;240m     │[0m             ╰─────── `ProfileView` has already been declared here
+ [38;5;240m     │[0m 
+ [38;5;246m1187 │[0m [38;5;249mf[0m[38;5;249mu[0m[38;5;249mn[0m[38;5;249mc[0m[38;5;249mt[0m[38;5;249mi[0m[38;5;249mo[0m[38;5;249mn[0m[38;5;249m [0mProfileView[38;5;249m([0m[38;5;249m{[0m[38;5;249m [0m[38;5;249mu[0m[38;5;249ms[0m[38;5;249me[0m[38;5;249mr[0m[38;5;249m,[0m[38;5;249m [0m[38;5;249ml[0m[38;5;249mo[0m[38;5;249mg[0m[38;5;249mo[0m[38;5;249mu[0m[38;5;249mt[0m[38;5;249m,[0m[38;5;249m [0m[38;5;249mo[0m[38;5;249mn[0m[38;5;249mS[0m[38;5;249ma[0m[38;5;249mv[0m[38;5;249me[0m[38;5;249mP[0m[38;5;249mr[0m[38;5;249mo[0m[38;5;249mf[0m[38;5;249mi[0m[38;5;249ml[0m[38;5;249me[0m[38;5;249m [0m[38;5;249m}[0m[38;5;249m)[0m[38;5;249m [0m[38;5;249m{[0m
+ [38;5;240m     │[0m          ─────┬─────  
+ [38;5;240m     │[0m               ╰─────── It can not be redeclared here
+[38;5;246m──────╯[0m
+
+...
+    at aggregateBindingErrorsIntoJsError (file:///C:/Users/ADMIN/Desktop/123/node_modules/rolldown/dist/shared/src-CYkh2Ybc.mjs:2659:18)
+    at unwrapBindingResult (file:///C:/Users/ADMIN/Desktop/123/node_modules/rolldown/dist/shared/src-CYkh2Ybc.mjs:2634:128)
+    at scan (file:///C:/Users/ADMIN/Desktop/123/node_modules/rolldown/dist/experimental-index.mjs:166:3)
+    at async Object.build$2 [as build] (file:///C:/Users/ADMIN/Desktop/123/node_modules/vite/dist/node/chunks/node.js:31020:3)
+    at async scan$1 (file:///C:/Users/ADMIN/Desktop/123/node_modules/vite/dist/node/chunks/node.js:30965:4)
+    at async file:///C:/Users/ADMIN/Desktop/123/node_modules/vite/dist/node/chunks/node.js:34083:15[39m
+[2m2:04:18 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
+[2m2:04:19 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/google219ac5926a4c8ee7.html[22m
+[2m2:04:19 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
+[2m2:04:21 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/google219ac5926a4c8ee7.html[22m
+[2m2:04:21 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
+[2m2:18:50 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/google219ac5926a4c8ee7.html[22m
+[2m2:18:50 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
+[2m2:18:50 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/google219ac5926a4c8ee7.html[22m
+[2m2:18:50 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
+[2m2:31:52 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/google219ac5926a4c8ee7.html[22m
+[2m2:31:52 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
+[2m2:31:52 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/google219ac5926a4c8ee7.html[22m
+[2m2:31:52 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
+[2m10:48:49 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/google219ac5926a4c8ee7.html[22m
+[2m10:48:49 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
+[2m10:48:49 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/google219ac5926a4c8ee7.html[22m
+[2m10:48:49 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
+[2m11:32:30 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
+[2m11:32:30 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/google219ac5926a4c8ee7.html[22m
+[2m11:32:31 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/google219ac5926a4c8ee7.html[22m
+[2m11:32:31 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
+[2m1:56:07 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/google219ac5926a4c8ee7.html[22m
+[2m1:56:07 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
+[2m1:56:07 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/google219ac5926a4c8ee7.html[22m
+[2m1:56:07 PM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2mandroid/app/src/main/assets/public/index.html[22m
